@@ -140,7 +140,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://example.com/images/redefine-og.webp">
 <meta property="article:published_time" content="2025-07-14T14:22:00.000Z">
-<meta property="article:modified_time" content="2025-07-14T14:23:02.214Z">
+<meta property="article:modified_time" content="2025-07-17T03:44:07.539Z">
 <meta property="article:author" content="John Doe">
 <meta property="article:tag" content="基础算法">
 <meta name="twitter:card" content="summary">
@@ -727,8 +727,8 @@
     
         <span class="article-date article-meta-item">
             <i class="fa-regular fa-wrench"></i>&nbsp;
-            <span class="desktop">2025-07-14 22:23:02</span>
-            <span class="mobile">2025-07-14 22:23:02</span>
+            <span class="desktop">2025-07-17 11:44:07</span>
+            <span class="mobile">2025-07-17 11:44:07</span>
             <span class="hover-info">更新</span>
         </span>
     
@@ -765,9 +765,13 @@
 
     
     
+        <span class="article-wordcount article-meta-item">
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>647 字</span>
+        </span>
+    
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>1 分钟</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>2 分钟</span>
         </span>
     
     
@@ -786,7 +790,21 @@
 
 
 		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
-			
+			<p>Trie树（又叫<strong>前缀树</strong>或<strong>字典树</strong>）是一种树形结构，专门用于<strong>高效地存储和查找字符串集合</strong>，特别适合处理<strong>前缀相关问题</strong>，如自动补全、字符串匹配、前缀计数等。</p>
+<p>代码模板:</p>
+<div class="code-container" data-rel="Cpp"><figure class="iseeu highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//以最经典的字符串为例</span></span><br><span class="line"><span class="comment">//一般是要么全是大写要么全是小写，就可以轻松映射到26个数字之中</span></span><br><span class="line"><span class="type">int</span> son[N][N],cnt[N],idx;</span><br><span class="line"><span class="comment">// 0号点既是根节点，又是空节点</span></span><br><span class="line"><span class="comment">// son[][]存储树中每个节点的子节点</span></span><br><span class="line"><span class="comment">// cnt[]存储以每个节点结尾的单词数量</span></span><br><span class="line"></span><br><span class="line"><span class="comment">//插入操作</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">insert</span><span class="params">(<span class="type">const</span> <span class="type">char</span> *str)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> p=<span class="number">0</span>;<span class="comment">//从根节点开始</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;str[i];i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> u=str[i]-<span class="string">&#x27;a&#x27;</span>;<span class="comment">//映射为数字</span></span><br><span class="line">        <span class="keyword">if</span>(!son[p][u])son[p][u]=++idx;<span class="comment">//如果不存在当前字符，就插入。注意要保留根节点的0</span></span><br><span class="line">        p=son[p][u];</span><br><span class="line">    &#125;</span><br><span class="line">    cnt[p]++;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//查询操作</span></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">query</span><span class="params">(<span class="type">const</span> <span class="type">char</span> *str)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> p=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;str[i];i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> u=str[i]-<span class="string">&#x27;a&#x27;</span>;</span><br><span class="line">        <span class="keyword">if</span>(!son[p][u])<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        p=son[p][u];</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> cnt[p];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+
+<p>一道经典题目：最大异或数</p>
+<p>在给定的 N 个整数 A1，A2……AN 中选出两个进行 xor（异或）运算，得到的结果最大是多少？</p>
+<h4 id="输入格式"><a href="#输入格式" class="headerlink" title="输入格式"></a>输入格式</h4><p>第一行输入一个整数 N。</p>
+<p>第二行输入 N 个整数 A1～AN。</p>
+<h4 id="输出格式"><a href="#输出格式" class="headerlink" title="输出格式"></a>输出格式</h4><p>输出一个整数表示答案。</p>
+<h4 id="数据范围"><a href="#数据范围" class="headerlink" title="数据范围"></a>数据范围</h4><p>1≤N≤105,<br>0≤Ai&lt;231</p>
+<p>分析：很明显，需要把每一个整数拆成32位，然后逐步插入Trie树（这里就只有0和1两种了），所有处理完之后，我们对每一个数去找可能最大的异或数，然后取所有的最大值就好了。</p>
+<p>具体如果找异或数呢，其实也就是遍历数的过程，如果有跟当前位相反的，就直接取，否则就只能取0。</p>
+<div class="code-container" data-rel="Cpp"><figure class="iseeu highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span><span class="string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span><span class="string">&lt;vector&gt;</span></span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> std;</span><br><span class="line"><span class="type">const</span> <span class="type">int</span> N=<span class="number">32</span>*<span class="number">1e5</span><span class="number">+10</span>;</span><br><span class="line"><span class="type">int</span> son[N][<span class="number">2</span>],idx;</span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">insert</span><span class="params">(<span class="type">int</span> x)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> p=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">31</span>;i&gt;=<span class="number">0</span>;i--)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> bit=(x&gt;&gt;i)&amp;<span class="number">1</span>;</span><br><span class="line">        <span class="keyword">if</span>(!son[p][bit])son[p][bit]=++idx;</span><br><span class="line">        p=son[p][bit];</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> n;<span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>,&amp;n);</span><br><span class="line">    vector&lt;<span class="type">int</span>&gt;nums;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;i&lt;n;i++)&#123;</span><br><span class="line">        <span class="type">int</span> x;<span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>,&amp;x);</span><br><span class="line">        <span class="built_in">insert</span>(x);nums.<span class="built_in">push_back</span>(x);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="type">int</span> ans=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> x:nums)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> sum=<span class="number">0</span>;<span class="type">int</span> p=<span class="number">0</span>;</span><br><span class="line">        <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">31</span>;i&gt;=<span class="number">0</span>;i--)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="type">int</span> bit=(x&gt;&gt;i)&amp;<span class="number">1</span>;</span><br><span class="line">            <span class="type">int</span> op=bit^<span class="number">1</span>;</span><br><span class="line">            <span class="keyword">if</span>(son[p][op])</span><br><span class="line">            &#123;</span><br><span class="line">                sum|=(<span class="number">1</span>&lt;&lt;i);</span><br><span class="line">                p=son[p][op];</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">else</span> p=son[p][bit];</span><br><span class="line">        &#125;</span><br><span class="line">        ans=<span class="built_in">max</span>(ans,sum);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;%d&quot;</span>,ans);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+
+
 		</div>
 
 		
@@ -800,7 +818,7 @@
         
             <li>
                 <strong>更新于
-                    :</strong> 2025-07-14 22:23:02
+                    :</strong> 2025-07-17 11:44:07
             </li>
         
         <li>
@@ -948,7 +966,7 @@
                     </span>
                     
                         <span>
-                            共 872 字
+                            共 1.5k 字
                         </span>
                     
                 </p>
