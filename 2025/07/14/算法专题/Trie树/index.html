@@ -123,7 +123,7 @@
     
     <!--- Seo Part-->
     
-    <link rel="canonical" href="http://example.com/2025/07/19/算法刷题/差分和前缀和刷题/"/>
+    <link rel="canonical" href="http://example.com/2025/07/14/算法专题/trie树/"/>
     <meta name="robots" content="index,follow">
     <meta name="googlebot" content="index,follow">
     <meta name="revisit-after" content="1 days">
@@ -133,14 +133,14 @@
         
         <meta name="description" content="Hexo Theme Redefine, Redefine Your Hexo Journey.">
 <meta property="og:type" content="article">
-<meta property="og:title" content="差分和前缀和刷题">
-<meta property="og:url" content="http://example.com/2025/07/19/%E7%AE%97%E6%B3%95%E5%88%B7%E9%A2%98/%E5%B7%AE%E5%88%86%E5%92%8C%E5%89%8D%E7%BC%80%E5%92%8C%E5%88%B7%E9%A2%98/index.html">
+<meta property="og:title" content="Trie树">
+<meta property="og:url" content="http://example.com/2025/07/14/%E7%AE%97%E6%B3%95%E4%B8%93%E9%A2%98/Trie%E6%A0%91/index.html">
 <meta property="og:site_name" content="Hexo">
 <meta property="og:description" content="Hexo Theme Redefine, Redefine Your Hexo Journey.">
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://example.com/images/redefine-og.webp">
-<meta property="article:published_time" content="2025-07-19T12:22:00.000Z">
-<meta property="article:modified_time" content="2025-07-20T01:01:15.052Z">
+<meta property="article:published_time" content="2025-07-14T14:22:00.000Z">
+<meta property="article:modified_time" content="2025-07-17T03:44:07.539Z">
 <meta property="article:author" content="John Doe">
 <meta property="article:tag" content="基础算法">
 <meta name="twitter:card" content="summary">
@@ -156,7 +156,7 @@
     
     <title>
         
-            差分和前缀和刷题 | Tomfng
+            Trie树 | Tomfng
         
     </title>
 
@@ -699,7 +699,7 @@
 		<div class="article-title relative w-full">
 			
 			<div class="w-full flex items-center pt-6 justify-start">
-				<h1 class="article-title-regular text-second-text-color tracking-tight text-4xl md:text-6xl font-semibold px-2 sm:px-6 md:px-8 py-3">差分和前缀和刷题</h1>
+				<h1 class="article-title-regular text-second-text-color tracking-tight text-4xl md:text-6xl font-semibold px-2 sm:px-6 md:px-8 py-3">Trie树</h1>
 			</div>
 			
 		</div>
@@ -720,15 +720,15 @@
 					<div class="article-meta-info">
     <span class="article-date article-meta-item">
         <i class="fa-regular fa-pen-fancy"></i>&nbsp;
-        <span class="desktop">2025-07-19 20:22</span>
-        <span class="mobile">2025-07-19 20:22</span>
+        <span class="desktop">2025-07-14 22:22</span>
+        <span class="mobile">2025-07-14 22:22</span>
         <span class="hover-info">创建</span>
     </span>
     
         <span class="article-date article-meta-item">
             <i class="fa-regular fa-wrench"></i>&nbsp;
-            <span class="desktop">2025-07-20 09:01:15</span>
-            <span class="mobile">2025-07-20 09:01:15</span>
+            <span class="desktop">2025-07-17 11:44:07</span>
+            <span class="mobile">2025-07-17 11:44:07</span>
             <span class="hover-info">更新</span>
         </span>
     
@@ -742,7 +742,7 @@
                     
                         
                         <li>
-                            <a href="/categories/%E7%AE%97%E6%B3%95%E5%88%B7%E9%A2%98/">算法刷题</a>&nbsp;
+                            <a href="/categories/%E7%AE%97%E6%B3%95%E7%AC%94%E8%AE%B0/">算法笔记</a>&nbsp;
                         </li>
                     
                     
@@ -766,12 +766,12 @@
     
     
         <span class="article-wordcount article-meta-item">
-            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>1.9k 字</span>
+            <i class="fa-regular fa-typewriter"></i>&nbsp;<span>647 字</span>
         </span>
     
     
         <span class="article-min2read article-meta-item">
-            <i class="fa-regular fa-clock"></i>&nbsp;<span>7 分钟</span>
+            <i class="fa-regular fa-clock"></i>&nbsp;<span>2 分钟</span>
         </span>
     
     
@@ -790,29 +790,19 @@
 
 
 		<div class="article-content markdown-body px-2 sm:px-6 md:px-8 pb-8">
-			<h3 id="中位数图"><a href="#中位数图" class="headerlink" title="中位数图"></a>中位数图</h3><p>好题指数：四星</p>
-<p>给出1~n的一个排列，统计该排列有多少个长度为奇数的连续子序列的中位数是b。中位数是指把所有元素从小到大排列后，位于中间的数。</p>
-<p>输入：第一行为两个正整数n和b</p>
-<p>输出：输出中位数为b的连续子序列的个数</p>
-<p>分析：这道题关键点是在于如何快速判断一个子序列中的中位数为b，对每一个子序列进行排序肯定不是最好的做法。假如一个连续子序列中的中位数为b，由于子序列的长度一定是奇数(2n+1)，也就是说只需要剩下有n个比b小，n个数比b大（因为是不重复的）。这就是问题的关键，<strong>也就是我们并不关心一个数的具体大小，而是只关心一个数比b大还是比b小</strong>，所以我们不妨对于比b大的数赋值为1，等于b的元素赋值为0，小于b的元素赋值为-1，因为只需要判断包含b并且和为0的子序列个数有多少，而子序列的和就自然用到前缀和去处理。</p>
-<p>第二个问题就是如果直接使用两重for循环会超时（因为限定时间为1s，而n最大时1e5)。所以同样要换个思路。这里的优化的思路其实和上面的思路差不多，那就是<strong>关注问题的本质而不是关注问题的细节</strong>，什么是问题的本质呢，也就是我们只需要在idx(b的索引)两边找到一个前缀和相同的两个索引（s[r]&#x3D;&#x3D;s[l-1]），关键在于我们<strong>只在乎个数，而不在乎具体是哪两个索引相等</strong>，如果我们跑去关注到底是哪两个索引，那肯定要枚举所有的情况然后去判断，就肯定会超时，这跟上面是一样的，如果我们去关注是具体的值而不是跟b的大小，也没有办法优化。所以一定要关注本质到底是什么。那么其实就是在idx左边找(l-1)分奇偶用哈希表存储个数，右边对应去哈希表查询。为什么要分奇偶呢？因为长度要是奇数个，也就是(r-l为偶数)那么r-(l-1)为奇数。<strong>这里有个细节，如果用数组去模拟哈希表的话要注意，存放的值是有正负的，但是索引一定要是正的，所以要加n</strong></p>
-<p>代码实现：</p>
-<div class="code-container" data-rel="Cpp"><figure class="iseeu highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span><span class="string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">define</span> js ios::sync_with_stdio(false);cin.tie(0);cout.tie(0)</span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> std;</span><br><span class="line"><span class="type">const</span> <span class="type">int</span> N=<span class="number">1e5</span><span class="number">+10</span>;</span><br><span class="line"><span class="type">int</span> a[N],s[N];</span><br><span class="line"><span class="type">int</span> ji[<span class="number">2</span>*N],ou[<span class="number">2</span>*N];</span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    js;<span class="type">int</span> idx;</span><br><span class="line">   <span class="type">int</span> n,b;cin&gt;&gt;n&gt;&gt;b;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">1</span>;i&lt;=n;i++)&#123;</span><br><span class="line">        <span class="type">int</span> x;cin&gt;&gt;x;</span><br><span class="line">        <span class="keyword">if</span>(x&gt;b)a[i]=<span class="number">1</span>;</span><br><span class="line">        <span class="keyword">else</span> <span class="keyword">if</span>(x==b)a[i]=<span class="number">0</span>,idx=i;</span><br><span class="line">        <span class="keyword">else</span> a[i]=<span class="number">-1</span>;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="comment">//前缀和</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">1</span>;i&lt;=n;i++)s[i]=s[i<span class="number">-1</span>]+a[i];</span><br><span class="line">    <span class="type">int</span> res=<span class="number">0</span>;</span><br><span class="line">    <span class="comment">//用两重for循环去找会超时</span></span><br><span class="line">    <span class="comment">//所以换个思路其实就是找奇偶相反的前缀和相等的坐标对</span></span><br><span class="line">    <span class="comment">//s[r]-s[l-1]==0-&gt;s[r]==s[l-1];</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;i&lt;idx;i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">if</span>(i%<span class="number">2</span>==<span class="number">0</span>)ou[s[i]+n]++;</span><br><span class="line">        <span class="keyword">else</span> ji[s[i]+n]++;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=idx;i&lt;=n;i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="keyword">if</span>(i%<span class="number">2</span>==<span class="number">0</span>)res+=ji[s[i]+n];</span><br><span class="line">        <span class="keyword">else</span> res+=ou[s[i]+n];</span><br><span class="line">    &#125;</span><br><span class="line">    cout&lt;&lt;res;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+			<p>Trie树（又叫<strong>前缀树</strong>或<strong>字典树</strong>）是一种树形结构，专门用于<strong>高效地存储和查找字符串集合</strong>，特别适合处理<strong>前缀相关问题</strong>，如自动补全、字符串匹配、前缀计数等。</p>
+<p>代码模板:</p>
+<div class="code-container" data-rel="Cpp"><figure class="iseeu highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//以最经典的字符串为例</span></span><br><span class="line"><span class="comment">//一般是要么全是大写要么全是小写，就可以轻松映射到26个数字之中</span></span><br><span class="line"><span class="type">int</span> son[N][N],cnt[N],idx;</span><br><span class="line"><span class="comment">// 0号点既是根节点，又是空节点</span></span><br><span class="line"><span class="comment">// son[][]存储树中每个节点的子节点</span></span><br><span class="line"><span class="comment">// cnt[]存储以每个节点结尾的单词数量</span></span><br><span class="line"></span><br><span class="line"><span class="comment">//插入操作</span></span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">insert</span><span class="params">(<span class="type">const</span> <span class="type">char</span> *str)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> p=<span class="number">0</span>;<span class="comment">//从根节点开始</span></span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;str[i];i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> u=str[i]-<span class="string">&#x27;a&#x27;</span>;<span class="comment">//映射为数字</span></span><br><span class="line">        <span class="keyword">if</span>(!son[p][u])son[p][u]=++idx;<span class="comment">//如果不存在当前字符，就插入。注意要保留根节点的0</span></span><br><span class="line">        p=son[p][u];</span><br><span class="line">    &#125;</span><br><span class="line">    cnt[p]++;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">//查询操作</span></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">query</span><span class="params">(<span class="type">const</span> <span class="type">char</span> *str)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> p=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;str[i];i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> u=str[i]-<span class="string">&#x27;a&#x27;</span>;</span><br><span class="line">        <span class="keyword">if</span>(!son[p][u])<span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">        p=son[p][u];</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="keyword">return</span> cnt[p];</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
 
-<p><strong>得到的经验：1.首先关注本质而不是细节 2.对于子序列（连续）问题的优化的关键往往是将区间转化为两个索引来降维</strong></p>
-<h3 id="二分"><a href="#二分" class="headerlink" title="二分"></a>二分</h3><p>好题指数：三星</p>
-<p>我们刚刚学了二分查找——所谓二分查找就是在一堆有序数里找某个符合要求的数。在学完二分查找之后如果让你玩猜数游戏（裁判选定一个目标数字，你说一个数裁判告诉你是高了还是低了直到你猜到那个数）的话，显然你会用二分的方式去猜。 </p>
-<p>  但是不是每一个玩猜数游戏的人都知道二分是最好，甚至一个健忘的玩家都有可能在得到裁判回答的下一个瞬间就忘了他之前问了什么以及裁判的回答），而现在更可怕的是，这个告诉你猜的数是高还是低的裁判他也很健忘，他总是薛定谔的记得这个目标数字，也就是说他的回答有可能出错。我们已经不关心这个不靠谱的游戏本身了，我们更关心裁判这个薛定谔的记得到底有几个是记得…… </p>
-<p>  现在给出这个健忘的玩家的所有猜测和裁判的所有回答，问裁判最多能有多少次是记得目标数字的，即裁判的回复是符合情况的。</p>
-<p>输入：</p>
-<p>第一行包含一个正整数n，表示裁判的回答数（也是玩家的猜数次数）。</p>
-<p>接下来n行，首先是猜的数，然后是一个空格，然后是一个符号。符号如果是“+”说明猜的数比答案大，“-”说明比答案小，“.”说明猜到了答案。</p>
-<p>输出：包含一个正整数，为裁判最多有多少个回答是正确的。</p>
-<p>分析：这道题第一个难点就在于如何求最多的正确次数，很明显由于目标数字其实是随意的，所以这道题其实是问存不存在一个数字能满足最多的回答情况，或者说是问所有的数字中，满足情况最多的数字的个数是多少。所以我们就不能从回答的真假性出发，而是认定每一句话都是正确的情况下，哪些数字满足。</p>
-<p>比如说5 ‘.’就是只有5满足，8 ‘+’就是小于8的数字都满足，那么每一个数字每满足一条就给他对应加1，这就相当于了在一个区间快速加减一个数，就转化成了差分的问题。但新的问题是，一共有-inf~inf这么多个数，肯定不可能开数组去做，所以肯定得离散化，所以使用map来存储。</p>
-<p>那么最后一个问题就是我们不可能遍历所有数然后求最值，但是事实上，我们也不需要，因为map中没有记录的值那一定是0，什么意思呢？就比如map[1]&#x3D;2 map[5]&#x3D;-1 那么对于s[1]&#x3D;map[1]+s[0]，那么s[2]&#x3D;s[1]+map[0]但是map[0]没有记录就说明他是0，说明s[2]&#x3D;s1同样的道理，1-5之间的所有数（也就是相邻两个记录的数之间都是一样的）那我们只关注最大的值是多少，不关注具体是哪一个，所以我们只需要遍历map就可以解决问题了。</p>
-<p>代码实现：</p>
-<div class="code-container" data-rel="Cpp"><figure class="iseeu highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span><span class="string">&lt;bits/stdc++.h&gt;</span></span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> std;</span><br><span class="line"><span class="type">const</span> <span class="type">int</span> inf=INT_MAX;</span><br><span class="line">map&lt;<span class="type">int</span>,<span class="type">int</span>&gt;M;</span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    ios::<span class="built_in">sync_with_stdio</span>(<span class="literal">false</span>);cin.<span class="built_in">tie</span>(<span class="number">0</span>);cout.<span class="built_in">tie</span>(<span class="number">0</span>);</span><br><span class="line">    <span class="type">int</span> n;cin&gt;&gt;n;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">1</span>;i&lt;=n;i++)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> x;<span class="type">char</span> ch;cin&gt;&gt;x&gt;&gt;ch;</span><br><span class="line">        <span class="keyword">if</span>(ch==<span class="string">&#x27;.&#x27;</span>)M[x]++,M[x<span class="number">+1</span>]--;</span><br><span class="line">        <span class="keyword">else</span> <span class="keyword">if</span>(ch==<span class="string">&#x27;+&#x27;</span>)M[-inf]++,M[x]--;</span><br><span class="line">        <span class="keyword">else</span> M[x<span class="number">+1</span>]++,M[inf]--;</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="type">int</span> res=<span class="number">0</span>;<span class="type">int</span> h=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span>(<span class="keyword">auto</span> x:M)</span><br><span class="line">    &#123;</span><br><span class="line">        h+=x.second;</span><br><span class="line">        res=<span class="built_in">max</span>(res,h);</span><br><span class="line">    &#125;</span><br><span class="line">    cout&lt;&lt;res;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
+<p>一道经典题目：最大异或数</p>
+<p>在给定的 N 个整数 A1，A2……AN 中选出两个进行 xor（异或）运算，得到的结果最大是多少？</p>
+<h4 id="输入格式"><a href="#输入格式" class="headerlink" title="输入格式"></a>输入格式</h4><p>第一行输入一个整数 N。</p>
+<p>第二行输入 N 个整数 A1～AN。</p>
+<h4 id="输出格式"><a href="#输出格式" class="headerlink" title="输出格式"></a>输出格式</h4><p>输出一个整数表示答案。</p>
+<h4 id="数据范围"><a href="#数据范围" class="headerlink" title="数据范围"></a>数据范围</h4><p>1≤N≤105,<br>0≤Ai&lt;231</p>
+<p>分析：很明显，需要把每一个整数拆成32位，然后逐步插入Trie树（这里就只有0和1两种了），所有处理完之后，我们对每一个数去找可能最大的异或数，然后取所有的最大值就好了。</p>
+<p>具体如果找异或数呢，其实也就是遍历数的过程，如果有跟当前位相反的，就直接取，否则就只能取0。</p>
+<div class="code-container" data-rel="Cpp"><figure class="iseeu highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span><span class="string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span><span class="string">&lt;vector&gt;</span></span></span><br><span class="line"><span class="keyword">using</span> <span class="keyword">namespace</span> std;</span><br><span class="line"><span class="type">const</span> <span class="type">int</span> N=<span class="number">32</span>*<span class="number">1e5</span><span class="number">+10</span>;</span><br><span class="line"><span class="type">int</span> son[N][<span class="number">2</span>],idx;</span><br><span class="line"><span class="function"><span class="type">void</span> <span class="title">insert</span><span class="params">(<span class="type">int</span> x)</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> p=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">31</span>;i&gt;=<span class="number">0</span>;i--)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> bit=(x&gt;&gt;i)&amp;<span class="number">1</span>;</span><br><span class="line">        <span class="keyword">if</span>(!son[p][bit])son[p][bit]=++idx;</span><br><span class="line">        p=son[p][bit];</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span></span></span><br><span class="line"><span class="function"></span>&#123;</span><br><span class="line">    <span class="type">int</span> n;<span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>,&amp;n);</span><br><span class="line">    vector&lt;<span class="type">int</span>&gt;nums;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;i&lt;n;i++)&#123;</span><br><span class="line">        <span class="type">int</span> x;<span class="built_in">scanf</span>(<span class="string">&quot;%d&quot;</span>,&amp;x);</span><br><span class="line">        <span class="built_in">insert</span>(x);nums.<span class="built_in">push_back</span>(x);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="type">int</span> ans=<span class="number">0</span>;</span><br><span class="line">    <span class="keyword">for</span>(<span class="type">int</span> x:nums)</span><br><span class="line">    &#123;</span><br><span class="line">        <span class="type">int</span> sum=<span class="number">0</span>;<span class="type">int</span> p=<span class="number">0</span>;</span><br><span class="line">        <span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">31</span>;i&gt;=<span class="number">0</span>;i--)</span><br><span class="line">        &#123;</span><br><span class="line">            <span class="type">int</span> bit=(x&gt;&gt;i)&amp;<span class="number">1</span>;</span><br><span class="line">            <span class="type">int</span> op=bit^<span class="number">1</span>;</span><br><span class="line">            <span class="keyword">if</span>(son[p][op])</span><br><span class="line">            &#123;</span><br><span class="line">                sum|=(<span class="number">1</span>&lt;&lt;i);</span><br><span class="line">                p=son[p][op];</span><br><span class="line">            &#125;</span><br><span class="line">            <span class="keyword">else</span> p=son[p][bit];</span><br><span class="line">        &#125;</span><br><span class="line">        ans=<span class="built_in">max</span>(ans,sum);</span><br><span class="line">    &#125;</span><br><span class="line">    <span class="built_in">printf</span>(<span class="string">&quot;%d&quot;</span>,ans);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></div>
 
 
 		</div>
@@ -821,18 +811,18 @@
 		<div class="post-copyright-info w-full my-8 px-2 sm:px-6 md:px-8">
 			<div class="article-copyright-info-container">
     <ul>
-        <li><strong>标题:</strong> 差分和前缀和刷题</li>
+        <li><strong>标题:</strong> Trie树</li>
         <li><strong>作者:</strong> Tomfng</li>
         <li><strong>创建于
-                :</strong> 2025-07-19 20:22:00</li>
+                :</strong> 2025-07-14 22:22:00</li>
         
             <li>
                 <strong>更新于
-                    :</strong> 2025-07-20 09:01:15
+                    :</strong> 2025-07-17 11:44:07
             </li>
         
         <li>
-            <strong>链接:</strong> https://redefine.ohevan.com/2025/07/19/算法刷题/差分和前缀和刷题/
+            <strong>链接:</strong> https://redefine.ohevan.com/2025/07/14/算法专题/Trie树/
         </li>
         <li>
             <strong>
@@ -866,29 +856,17 @@
 		<div class="article-nav my-8 flex justify-between items-center px-2 sm:px-6 md:px-8">
 			
 			<div class="article-prev border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
-				<a class="prev" rel="prev" href="/2025/07/20/%E7%AE%97%E6%B3%95%E4%B8%93%E9%A2%98/%E8%83%8C%E5%8C%85%E9%97%AE%E9%A2%98/">
+				<a class="prev" rel="prev" href="/2025/07/15/%E7%AE%97%E6%B3%95%E4%B8%93%E9%A2%98/%E7%AE%97%E7%AB%9E%E4%B8%AD%E5%B8%B8%E7%94%A8%E7%9A%84%E6%97%A0%E7%A9%B7%E5%A4%A7--0x3f3f3f3f/">
 					<span class="left arrow-icon flex justify-center items-center">
 						<i class="fa-solid fa-chevron-left"></i>
 					</span>
 					<span class="title flex justify-center items-center">
-						<span class="post-nav-title-item truncate max-w-48">背包问题</span>
+						<span class="post-nav-title-item truncate max-w-48">算竞中常用的无穷大--0x3f3f3f3f</span>
 						<span class="post-nav-item">上一篇</span>
 					</span>
 				</a>
 			</div>
 			
-			
-			<div class="article-next border-border-color shadow-redefine-flat shadow-shadow-color-2 rounded-medium px-4 py-2 hover:shadow-redefine-flat-hover hover:shadow-shadow-color-2">
-				<a class="next" rel="next" href="/2025/07/19/Vue%E5%AD%A6%E4%B9%A0/Vue%E5%9F%BA%E7%A1%80%E5%AD%A6%E4%B9%A0%E7%AC%94%E8%AE%B0%EF%BC%88%E4%B8%80%EF%BC%89/">
-					<span class="title flex justify-center items-center">
-						<span class="post-nav-title-item truncate max-w-48">Vue基础学习笔记(一)</span>
-						<span class="post-nav-item">下一篇</span>
-					</span>
-					<span class="right arrow-icon flex justify-center items-center">
-						<i class="fa-solid fa-chevron-right"></i>
-					</span>
-				</a>
-			</div>
 			
 		</div>
 		
@@ -956,8 +934,8 @@
 		<div class="post-toc-wrap">
 	<div class="post-toc">
 		<div class="toc-title">目录</div>
-		<div class="page-title">差分和前缀和刷题</div>
-		<ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%AD%E4%BD%8D%E6%95%B0%E5%9B%BE"><span class="nav-text">中位数图</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%BA%8C%E5%88%86"><span class="nav-text">二分</span></a></li></ol>
+		<div class="page-title">Trie树</div>
+		
 
 	</div>
 </div>
