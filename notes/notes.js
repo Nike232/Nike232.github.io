@@ -88,11 +88,12 @@ function renderTags() {
 
 function renderList(notes) {
   if (!notes.length) {
+    const hasNotes = state.data.notes.some((note) => note.status !== "archived");
     elements.list.innerHTML = `
       <div class="empty-state">
-        <h2>还没有笔记</h2>
-        <p>从管理页新建一条笔记后，这里会变成你的文档列表。</p>
-        <a class="button-link" href="/admin/">新建笔记</a>
+        <h2>${hasNotes ? "没有匹配结果" : "还没有笔记"}</h2>
+        <p>${hasNotes ? "换个关键词或标签试试。" : "从管理页新建一条笔记后，这里会变成你的文档列表。"}</p>
+        ${hasNotes ? "" : '<a class="button-link" href="/admin/">新建笔记</a>'}
       </div>
     `;
     return;
@@ -105,7 +106,7 @@ function renderList(notes) {
       <button class="note-row${active}" type="button" data-id="${escapeHtml(note.id)}">
         <span class="note-row-title">
           <span>${escapeHtml(note.title)}</span>
-          <span class="state-pill">${escapeHtml(note.status)}</span>
+          <span class="state-pill state-${escapeHtml(note.status)}">${escapeHtml(note.status)}</span>
         </span>
         <span class="note-row-meta">${formatDate(note.updatedAt)}</span>
         <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 120) || "无摘要")}</span>
@@ -125,10 +126,11 @@ function renderList(notes) {
 function renderSelected(notes) {
   const note = notes.find((item) => item.id === state.selectedId);
   if (!note) {
+    const hasNotes = state.data.notes.some((item) => item.status !== "archived");
     elements.view.innerHTML = `
       <div class="empty-state">
-        <h2>空白页</h2>
-        <p>当前筛选没有匹配的笔记。</p>
+        <h2>${hasNotes ? "没有匹配结果" : "文档会在这里打开"}</h2>
+        <p>${hasNotes ? "左侧没有符合当前筛选的笔记。" : "发布笔记后，正文会在这个区域阅读。"}</p>
       </div>
     `;
     return;
@@ -138,7 +140,7 @@ function renderSelected(notes) {
   elements.view.innerHTML = `
     <div class="note-kicker">
       <span>${formatDate(note.updatedAt)}</span>
-      <span>${escapeHtml(note.status)}</span>
+      <span class="state-pill state-${escapeHtml(note.status)}">${escapeHtml(note.status)}</span>
       ${tags}
     </div>
     <h1>${escapeHtml(note.title)}</h1>

@@ -201,7 +201,7 @@ function renderList() {
       <button class="note-row${active}" type="button" data-id="${escapeHtml(note.id)}">
         <span class="note-row-title">
           <span>${escapeHtml(note.title || "无标题")}</span>
-          <span class="state-pill">${escapeHtml(note.status)}</span>
+          <span class="state-pill state-${escapeHtml(note.status)}">${escapeHtml(note.status)}</span>
         </span>
         <span class="note-row-meta">${formatDate(note.updatedAt)}</span>
         <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 110) || "无摘要")}</span>
