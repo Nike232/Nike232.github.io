@@ -630,6 +630,22 @@
   opacity: 0;
 }
 
+.editor-field .cm-s-hypermd-light span.cm-formatting-header,
+.editor-field .cm-s-hypermd-light span.cm-formatting-em,
+.editor-field .cm-s-hypermd-light span.cm-formatting-strong,
+.editor-field .cm-s-hypermd-light span.cm-formatting-strikethrough,
+.editor-field .cm-s-hypermd-light span.cm-formatting-code,
+.editor-field .cm-s-hypermd-light span.cm-formatting-link,
+.editor-field .cm-s-hypermd-light span.cm-formatting-image,
+.editor-field .cm-s-hypermd-light span.cm-formatting-quote {
+  color: transparent !important;
+  font-family: var(--note-mono) !important;
+  font-size: 1px !important;
+  letter-spacing: -1ch;
+  opacity: 0;
+  text-shadow: none !important;
+}
+
 .editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-header,
 .editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-em,
 .editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-strong,
@@ -657,9 +673,9 @@
   font-size: 0.88em;
 }
 
-.editor-field .cm-s-hypermd-light span.cm-formatting-code.hmd-hidden-token {
+.editor-field .cm-s-hypermd-light span.cm-formatting-code {
   padding: 0;
-  background: transparent;
+  background: transparent !important;
 }
 
 .editor-field .cm-s-hypermd-light span.cm-link,
