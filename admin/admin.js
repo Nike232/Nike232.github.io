@@ -38,6 +38,8 @@ const state = {
   category: "all",
   editor: null,
   editorMode: localStorage.getItem(EDITOR_MODE_KEY) === "vim" ? "vim" : "default",
+  vimCursorMode: "normal",
+  vimBlockCursor: null,
   syncingEditor: false
 };
 
@@ -196,7 +198,11 @@ function initMarkdownEditor() {
     updateEditorStats();
     syncEditorCursorStyle();
   });
-  state.editor.on("vim-mode-change", syncEditorCursorStyle);
+  state.editor.on("vim-mode-change", (_cm, event) => {
+    state.vimCursorMode = event?.mode || "normal";
+    syncEditorCursorStyle();
+  });
+  state.editor.on("scroll", syncEditorCursorStyle);
   syncEditorCursorStyle();
   updateEditorStats();
 }
@@ -208,15 +214,95 @@ function syncEditorCursorStyle() {
 
   if (state.editorMode !== "vim") {
     window.CodeMirror.rmClass(wrapper, "note-vim-thin-cursor");
+    window.CodeMirror.rmClass(wrapper, "note-vim-block-cursor");
+    setVimBlockCursorVisible(false);
     return;
   }
 
   state.editor.options.$customCursor = null;
   window.CodeMirror.rmClass(wrapper, "cm-fat-cursor");
-  window.CodeMirror.addClass(wrapper, "note-vim-thin-cursor");
   if (state.editor.getOption("showCursorWhenSelecting") !== true) {
     state.editor.setOption("showCursorWhenSelecting", true);
   }
+
+  const vim = state.editor.state?.vim;
+  const isInsertLike = vim?.insertMode || state.vimCursorMode === "insert" || state.vimCursorMode === "replace";
+  window.CodeMirror.rmClass(wrapper, isInsertLike ? "note-vim-block-cursor" : "note-vim-thin-cursor");
+  window.CodeMirror.addClass(wrapper, isInsertLike ? "note-vim-thin-cursor" : "note-vim-block-cursor");
+
+  if (isInsertLike) {
+    setVimBlockCursorVisible(false);
+    return;
+  }
+
+  window.requestAnimationFrame?.(positionVimBlockCursor);
+}
+
+function ensureVimBlockCursor() {
+  if (state.vimBlockCursor?.isConnected) return state.vimBlockCursor;
+  const wrapper = state.editor?.getWrapperElement?.();
+  if (!wrapper) return null;
+  const marker = document.createElement("span");
+  marker.className = "note-vim-block-cursor-marker";
+  marker.setAttribute("aria-hidden", "true");
+  wrapper.appendChild(marker);
+  state.vimBlockCursor = marker;
+  return marker;
+}
+
+function setVimBlockCursorVisible(visible) {
+  const marker = state.vimBlockCursor || ensureVimBlockCursor();
+  if (!marker) return;
+  marker.hidden = !visible;
+}
+
+function positionVimBlockCursor() {
+  if (!state.editor || state.editorMode !== "vim") return;
+  const wrapper = state.editor.getWrapperElement?.();
+  const marker = ensureVimBlockCursor();
+  if (!wrapper || !marker || !wrapper.classList.contains("note-vim-block-cursor")) return;
+
+  const cursor = wrapper.querySelector(".CodeMirror-cursor");
+  const cursorRect = cursor?.getBoundingClientRect();
+  const wrapperRect = wrapper.getBoundingClientRect();
+  if (!cursorRect || !cursorRect.height) {
+    setVimBlockCursorVisible(false);
+    return;
+  }
+
+  const position = state.editor.getCursor();
+  const line = state.editor.getLine(position.line) || "";
+  const charIndex = Math.min(position.ch, Math.max(line.length - 1, 0));
+  const char = line.charAt(charIndex) || " ";
+  const width = measureVimCursorChar(char, wrapper);
+  marker.style.left = `${cursorRect.left - wrapperRect.left}px`;
+  marker.style.top = `${cursorRect.top - wrapperRect.top}px`;
+  marker.style.width = `${width}px`;
+  marker.style.height = `${cursorRect.height}px`;
+  marker.hidden = false;
+}
+
+function measureVimCursorChar(char, wrapper) {
+  const code = wrapper.querySelector(".CodeMirror-code") || wrapper;
+  const style = getComputedStyle(code);
+  const fallback = Number.parseFloat(style.fontSize || "18") * 0.58;
+  const probe = measureVimCursorChar.probe || document.createElement("span");
+  if (!measureVimCursorChar.probe) {
+    probe.style.position = "fixed";
+    probe.style.top = "-9999px";
+    probe.style.left = "-9999px";
+    probe.style.visibility = "hidden";
+    probe.style.whiteSpace = "pre";
+    document.body.appendChild(probe);
+    measureVimCursorChar.probe = probe;
+  }
+  probe.style.fontFamily = style.fontFamily;
+  probe.style.fontSize = style.fontSize;
+  probe.style.fontWeight = style.fontWeight;
+  probe.style.letterSpacing = style.letterSpacing;
+  probe.textContent = char === "\t" ? "  " : char || " ";
+  const measured = probe.getBoundingClientRect().width;
+  return Math.max(7, Math.min(measured || fallback, fallback * 2.4));
 }
 
 async function loadPublicData() {

@@ -401,6 +401,7 @@
 }
 
 .editor-field .CodeMirror {
+  position: relative;
   width: 100%;
   min-height: 620px;
   height: auto;
@@ -489,9 +490,36 @@
   animation: none !important;
 }
 
+.editor-field .note-vim-block-cursor .CodeMirror-cursor {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: transparent;
+  background: transparent !important;
+  box-shadow: none !important;
+  opacity: 0 !important;
+}
+
 .editor-field .cm-fat-cursor div.CodeMirror-cursors,
-.editor-field .note-vim-thin-cursor div.CodeMirror-cursors {
+.editor-field .note-vim-thin-cursor div.CodeMirror-cursors,
+.editor-field .note-vim-block-cursor div.CodeMirror-cursors {
   z-index: 3;
+}
+
+.editor-field .note-vim-block-cursor-marker {
+  position: absolute;
+  z-index: 4;
+  display: block;
+  pointer-events: none;
+  border-radius: 2px;
+  background: rgba(47, 45, 41, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(47, 45, 41, 0.34);
+}
+
+.editor-field .note-vim-block-cursor-marker[hidden] {
+  display: none;
 }
 
 .editor-field .cm-animate-fat-cursor {
