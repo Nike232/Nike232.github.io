@@ -1,4 +1,5 @@
-export function escapeHtml(value = "") {
+(function () {
+function escapeHtml(value = "") {
   return String(value)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
@@ -7,7 +8,7 @@ export function escapeHtml(value = "") {
     .replaceAll("'", "&#039;");
 }
 
-export function formatDate(value) {
+function formatDate(value) {
   if (!value) return "未记录";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "未记录";
@@ -20,7 +21,7 @@ export function formatDate(value) {
   }).format(date);
 }
 
-export function normalizeNotesData(payload) {
+function normalizeNotesData(payload) {
   const source = payload && typeof payload === "object" ? payload : {};
   const notes = Array.isArray(source.notes) ? source.notes : [];
   return {
@@ -32,7 +33,7 @@ export function normalizeNotesData(payload) {
   };
 }
 
-export function normalizeNote(note = {}) {
+function normalizeNote(note = {}) {
   const now = new Date().toISOString();
   const title = String(note.title || "未命名笔记").trim();
   return {
@@ -48,7 +49,7 @@ export function normalizeNote(note = {}) {
   };
 }
 
-export function normalizeTags(tags) {
+function normalizeTags(tags) {
   if (Array.isArray(tags)) {
     return tags.map((tag) => String(tag).trim()).filter(Boolean);
   }
@@ -58,14 +59,14 @@ export function normalizeTags(tags) {
     .filter(Boolean);
 }
 
-export function makeId() {
+function makeId() {
   if (globalThis.crypto && typeof globalThis.crypto.randomUUID === "function") {
     return globalThis.crypto.randomUUID();
   }
   return `note-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function makeSlug(value = "") {
+function makeSlug(value = "") {
   const cleaned = String(value)
     .trim()
     .toLowerCase()
@@ -74,7 +75,7 @@ export function makeSlug(value = "") {
   return cleaned || `note-${Date.now().toString(36)}`;
 }
 
-export function markdownToHtml(markdown = "") {
+function markdownToHtml(markdown = "") {
   const segments = String(markdown).split(/```/);
   return segments
     .map((segment, index) => {
@@ -157,3 +158,15 @@ function inlineMarkdown(value) {
   );
   return html;
 }
+
+window.TomfngNoteTools = {
+  escapeHtml,
+  formatDate,
+  makeId,
+  makeSlug,
+  markdownToHtml,
+  normalizeNote,
+  normalizeNotesData,
+  normalizeTags
+};
+}());

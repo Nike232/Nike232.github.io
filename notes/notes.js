@@ -1,4 +1,10 @@
-import { escapeHtml, formatDate, markdownToHtml, normalizeNotesData } from "/note-utils.js";
+(function () {
+const root = document.querySelector("[data-notes-reader]");
+const tools = window.TomfngNoteTools;
+if (!root || root.dataset.ready === "true" || !tools) return;
+root.dataset.ready = "true";
+
+const { escapeHtml, formatDate, markdownToHtml, normalizeNotesData } = tools;
 
 const DATA_URL = "/notes-data.json";
 const state = {
@@ -9,11 +15,11 @@ const state = {
 };
 
 const elements = {
-  count: document.querySelector("#note-count"),
-  search: document.querySelector("#search-input"),
-  tagStrip: document.querySelector("#tag-strip"),
-  list: document.querySelector("#note-list"),
-  view: document.querySelector("#note-view")
+  count: root.querySelector("#note-count"),
+  search: root.querySelector("#search-input"),
+  tagStrip: root.querySelector("#tag-strip"),
+  list: root.querySelector("#note-list"),
+  view: root.querySelector("#note-view")
 };
 
 init();
@@ -161,5 +167,6 @@ function renderError(error) {
       <button class="ghost-button" type="button" id="retry-load">Retry</button>
     </div>
   `;
-  document.querySelector("#retry-load")?.addEventListener("click", loadNotes);
+  root.querySelector("#retry-load")?.addEventListener("click", loadNotes);
 }
+}());

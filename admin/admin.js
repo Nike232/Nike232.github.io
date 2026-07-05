@@ -1,4 +1,10 @@
-import {
+(function () {
+const root = document.querySelector("[data-notes-admin]");
+const tools = window.TomfngNoteTools;
+if (!root || root.dataset.ready === "true" || !tools) return;
+root.dataset.ready = "true";
+
+const {
   escapeHtml,
   formatDate,
   makeId,
@@ -7,7 +13,7 @@ import {
   normalizeNote,
   normalizeNotesData,
   normalizeTags
-} from "/note-utils.js";
+} = tools;
 
 const DATA_URL = "/notes-data.json";
 const STORAGE_KEY = "tomfng-notes-workspace";
@@ -30,37 +36,37 @@ const state = {
 };
 
 const fields = {
-  title: document.querySelector("#field-title"),
-  slug: document.querySelector("#field-slug"),
-  tags: document.querySelector("#field-tags"),
-  status: document.querySelector("#field-status"),
-  summary: document.querySelector("#field-summary"),
-  content: document.querySelector("#field-content")
+  title: root.querySelector("#field-title"),
+  slug: root.querySelector("#field-slug"),
+  tags: root.querySelector("#field-tags"),
+  status: root.querySelector("#field-status"),
+  summary: root.querySelector("#field-summary"),
+  content: root.querySelector("#field-content")
 };
 
 const elements = {
-  count: document.querySelector("#admin-count"),
-  list: document.querySelector("#admin-list"),
-  form: document.querySelector("#editor-form"),
-  status: document.querySelector("#status-text"),
-  dirty: document.querySelector("#dirty-state"),
-  previewTitle: document.querySelector("#preview-title"),
-  previewSummary: document.querySelector("#preview-summary"),
-  previewContent: document.querySelector("#preview-content"),
-  errorTitle: document.querySelector("#error-title"),
-  errorSlug: document.querySelector("#error-slug"),
-  newNote: document.querySelector("#new-note"),
-  duplicateNote: document.querySelector("#duplicate-note"),
-  deleteNote: document.querySelector("#delete-note"),
-  saveLocal: document.querySelector("#save-local"),
-  pullRemote: document.querySelector("#pull-remote"),
-  publishRemote: document.querySelector("#publish-remote"),
-  saveConfig: document.querySelector("#save-config"),
-  configToken: document.querySelector("#config-token"),
-  configOwner: document.querySelector("#config-owner"),
-  configRepo: document.querySelector("#config-repo"),
-  configBranch: document.querySelector("#config-branch"),
-  configPath: document.querySelector("#config-path")
+  count: root.querySelector("#admin-count"),
+  list: root.querySelector("#admin-list"),
+  form: root.querySelector("#editor-form"),
+  status: root.querySelector("#status-text"),
+  dirty: root.querySelector("#dirty-state"),
+  previewTitle: root.querySelector("#preview-title"),
+  previewSummary: root.querySelector("#preview-summary"),
+  previewContent: root.querySelector("#preview-content"),
+  errorTitle: root.querySelector("#error-title"),
+  errorSlug: root.querySelector("#error-slug"),
+  newNote: root.querySelector("#new-note"),
+  duplicateNote: root.querySelector("#duplicate-note"),
+  deleteNote: root.querySelector("#delete-note"),
+  saveLocal: root.querySelector("#save-local"),
+  pullRemote: root.querySelector("#pull-remote"),
+  publishRemote: root.querySelector("#publish-remote"),
+  saveConfig: root.querySelector("#save-config"),
+  configToken: root.querySelector("#config-token"),
+  configOwner: root.querySelector("#config-owner"),
+  configRepo: root.querySelector("#config-repo"),
+  configBranch: root.querySelector("#config-branch"),
+  configPath: root.querySelector("#config-path")
 };
 
 init();
@@ -288,7 +294,7 @@ function markDirty(message) {
 
 function setStatus(message, isError = false) {
   elements.status.textContent = message;
-  elements.status.style.color = isError ? "var(--danger)" : "var(--muted)";
+  elements.status.style.color = isError ? "var(--note-danger)" : "var(--third-text-color)";
 }
 
 function setBusy(value) {
@@ -472,3 +478,4 @@ function decodeBase64(value) {
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
   return new TextDecoder().decode(bytes);
 }
+}());
