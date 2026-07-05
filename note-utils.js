@@ -40,6 +40,7 @@ function normalizeNote(note = {}) {
     id: String(note.id || makeId()),
     title,
     slug: String(note.slug || makeSlug(title)).trim(),
+    category: normalizeCategory(note.category),
     summary: String(note.summary || "").trim(),
     tags: normalizeTags(note.tags),
     status: note.status === "archived" ? "archived" : note.status === "draft" ? "draft" : "published",
@@ -47,6 +48,10 @@ function normalizeNote(note = {}) {
     createdAt: note.createdAt || now,
     updatedAt: note.updatedAt || now
   };
+}
+
+function normalizeCategory(category) {
+  return String(category || "未分类").trim() || "未分类";
 }
 
 function normalizeTags(tags) {
@@ -165,6 +170,7 @@ window.TomfngNoteTools = {
   makeId,
   makeSlug,
   markdownToHtml,
+  normalizeCategory,
   normalizeNote,
   normalizeNotesData,
   normalizeTags

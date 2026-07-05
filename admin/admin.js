@@ -10,6 +10,7 @@ const {
   makeId,
   makeSlug,
   markdownToHtml,
+  normalizeCategory,
   normalizeNote,
   normalizeNotesData,
   normalizeTags
@@ -18,6 +19,7 @@ const {
 const DATA_URL = "/notes-data.json";
 const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
+const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const DEFAULT_CONFIG = {
   owner: "Nike232",
   repo: "Nike232.github.io",
@@ -32,12 +34,17 @@ const state = {
   dirty: false,
   remoteSha: null,
   config: loadConfig(),
-  busy: false
+  busy: false,
+  category: "all",
+  editor: null,
+  editorMode: localStorage.getItem(EDITOR_MODE_KEY) === "vim" ? "vim" : "default",
+  syncingEditor: false
 };
 
 const fields = {
   title: root.querySelector("#field-title"),
   slug: root.querySelector("#field-slug"),
+  category: root.querySelector("#field-category"),
   tags: root.querySelector("#field-tags"),
   status: root.querySelector("#field-status"),
   summary: root.querySelector("#field-summary"),
@@ -46,6 +53,8 @@ const fields = {
 
 const elements = {
   count: root.querySelector("#admin-count"),
+  categoryStrip: root.querySelector("#admin-category-strip"),
+  categoryOptions: root.querySelector("#category-options"),
   list: root.querySelector("#admin-list"),
   form: root.querySelector("#editor-form"),
   status: root.querySelector("#status-text"),
@@ -62,6 +71,10 @@ const elements = {
   pullRemote: root.querySelector("#pull-remote"),
   publishRemote: root.querySelector("#publish-remote"),
   saveConfig: root.querySelector("#save-config"),
+  toggleVim: root.querySelector("#toggle-vim"),
+  editorMode: root.querySelector("#editor-mode"),
+  editorPosition: root.querySelector("#editor-position"),
+  editorWords: root.querySelector("#editor-words"),
   configToken: root.querySelector("#config-token"),
   configOwner: root.querySelector("#config-owner"),
   configRepo: root.querySelector("#config-repo"),
@@ -73,6 +86,7 @@ init();
 
 async function init() {
   bindEvents();
+  initMarkdownEditor();
   hydrateConfigForm();
   const localData = loadWorkspace();
   if (localData) {
@@ -93,9 +107,62 @@ function bindEvents() {
   elements.pullRemote.addEventListener("click", pullRemote);
   elements.publishRemote.addEventListener("click", publishRemote);
   elements.saveConfig.addEventListener("click", saveConfig);
+  elements.toggleVim.addEventListener("click", toggleEditorMode);
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
   fields.status.addEventListener("change", updateSelectedFromFields);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
+}
+
+function initMarkdownEditor() {
+  if (!window.CodeMirror) {
+    fields.content.classList.add("is-fallback-editor");
+    updateEditorStats();
+    return;
+  }
+
+  const requestedKeyMap = state.editorMode === "vim" && window.CodeMirror.keyMap.vim ? "vim" : "default";
+  if (requestedKeyMap !== "vim") {
+    state.editorMode = "default";
+  }
+
+  state.editor = window.CodeMirror.fromTextArea(fields.content, {
+    mode: "markdown",
+    keyMap: requestedKeyMap,
+    lineWrapping: true,
+    lineNumbers: false,
+    styleActiveLine: true,
+    autoCloseBrackets: true,
+    matchBrackets: true,
+    indentUnit: 2,
+    tabSize: 2,
+    indentWithTabs: false,
+    viewportMargin: 40,
+    placeholder: fields.content.getAttribute("placeholder") || "",
+    extraKeys: {
+      Enter: "newlineAndIndentContinueMarkdownList",
+      Tab(cm) {
+        cm.replaceSelection("  ", "end");
+      },
+      "Shift-Tab": "indentLess",
+      "Ctrl-S"(cm) {
+        cm.save();
+        saveWorkspace();
+      },
+      "Cmd-S"(cm) {
+        cm.save();
+        saveWorkspace();
+      }
+    }
+  });
+
+  state.editor.on("change", () => {
+    if (state.syncingEditor) return;
+    fields.content.value = state.editor.getValue();
+    updateSelectedFromFields();
+    updateEditorStats();
+  });
+  state.editor.on("cursorActivity", updateEditorStats);
+  updateEditorStats();
 }
 
 async function loadPublicData() {
@@ -120,6 +187,7 @@ function createNote() {
     id: makeId(),
     title: "无标题",
     slug: `note-${Date.now().toString(36)}`,
+    category: state.category === "all" ? "未分类" : state.category,
     tags: [],
     status: "draft",
     summary: "",
@@ -166,36 +234,81 @@ function updateSelectedFromFields() {
   if (!note) return;
   note.title = fields.title.value.trimStart();
   note.slug = fields.slug.value.trim();
+  note.category = normalizeCategory(fields.category.value);
   note.tags = normalizeTags(fields.tags.value);
   note.status = fields.status.value;
   note.summary = fields.summary.value.trimStart();
-  note.content = fields.content.value;
+  note.content = getEditorValue();
   note.updatedAt = new Date().toISOString();
+  if (state.category !== "all" && state.category !== note.category) {
+    state.category = note.category;
+  }
   markDirty("正在编辑");
+  renderCategories();
   renderList();
   renderPreview(note);
   validateSelected();
+  updateEditorStats();
 }
 
 function render() {
+  renderCategories();
   renderList();
   renderEditor();
   renderDirtyState();
+  updateEditorStats();
+}
+
+function getCategories() {
+  return [...new Set(state.data.notes.map((note) => normalizeCategory(note.category)))]
+    .sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
+function getVisibleNotes() {
+  if (state.category === "all") return state.data.notes;
+  return state.data.notes.filter((note) => normalizeCategory(note.category) === state.category);
+}
+
+function renderCategories() {
+  const categories = getCategories();
+  if (state.category !== "all" && !categories.includes(state.category)) {
+    state.category = "all";
+  }
+  const buttons = ["all", ...categories].map((category) => {
+    const label = category === "all" ? "全部" : category;
+    const active = category === state.category ? " is-active" : "";
+    return `<button class="category-filter${active}" type="button" data-category="${escapeHtml(category)}">${escapeHtml(label)}</button>`;
+  });
+  elements.categoryStrip.innerHTML = buttons.join("");
+  elements.categoryOptions.innerHTML = categories
+    .map((category) => `<option value="${escapeHtml(category)}"></option>`)
+    .join("");
+  elements.categoryStrip.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.category = button.dataset.category;
+      const visible = getVisibleNotes();
+      if (!visible.some((note) => note.id === state.selectedId)) {
+        state.selectedId = visible[0]?.id || null;
+      }
+      render();
+    });
+  });
 }
 
 function renderList() {
-  elements.count.textContent = `${state.data.notes.length}`;
-  if (!state.data.notes.length) {
+  const visibleNotes = getVisibleNotes();
+  elements.count.textContent = `${visibleNotes.length}`;
+  if (!visibleNotes.length) {
     elements.list.innerHTML = `
       <div class="empty-state">
-        <h2>没有页面</h2>
-        <p>点击新建，开始写第一条笔记。</p>
+        <h2>${state.data.notes.length ? "这个分类是空的" : "没有页面"}</h2>
+        <p>${state.data.notes.length ? "新建页面会自动放进当前分类。" : "点击新建，开始写第一条笔记。"}</p>
       </div>
     `;
     return;
   }
 
-  elements.list.innerHTML = state.data.notes.map((note) => {
+  elements.list.innerHTML = visibleNotes.map((note) => {
     const active = note.id === state.selectedId ? " is-active" : "";
     return `
       <button class="note-row${active}" type="button" data-id="${escapeHtml(note.id)}">
@@ -203,7 +316,7 @@ function renderList() {
           <span>${escapeHtml(note.title || "无标题")}</span>
           <span class="state-pill state-${escapeHtml(note.status)}">${escapeHtml(note.status)}</span>
         </span>
-        <span class="note-row-meta">${formatDate(note.updatedAt)}</span>
+        <span class="note-row-meta">${escapeHtml(normalizeCategory(note.category))} / ${formatDate(note.updatedAt)}</span>
         <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 110) || "无摘要")}</span>
       </button>
     `;
@@ -229,10 +342,12 @@ function renderEditor() {
   if (!note) {
     fields.title.value = "";
     fields.slug.value = "";
+    fields.category.value = "";
     fields.tags.value = "";
     fields.status.value = "draft";
     fields.summary.value = "";
-    fields.content.value = "";
+    setEditorValue("");
+    setEditorEnabled(false);
     elements.previewTitle.textContent = "未选择页面";
     elements.previewSummary.textContent = "";
     elements.previewContent.innerHTML = `
@@ -246,10 +361,12 @@ function renderEditor() {
 
   fields.title.value = note.title;
   fields.slug.value = note.slug;
+  fields.category.value = normalizeCategory(note.category);
   fields.tags.value = note.tags.join(", ");
   fields.status.value = note.status;
   fields.summary.value = note.summary;
-  fields.content.value = note.content;
+  setEditorValue(note.content);
+  setEditorEnabled(true);
   renderPreview(note);
   validateSelected();
 }
@@ -258,6 +375,64 @@ function renderPreview(note) {
   elements.previewTitle.textContent = note.title || "无标题";
   elements.previewSummary.textContent = note.summary || "";
   elements.previewContent.innerHTML = markdownToHtml(contentWithoutTitleHeading(note) || " ");
+}
+
+function getEditorValue() {
+  return state.editor ? state.editor.getValue() : fields.content.value;
+}
+
+function setEditorValue(value) {
+  const nextValue = String(value || "");
+  fields.content.value = nextValue;
+  if (!state.editor) return;
+  if (state.editor.getValue() === nextValue) {
+    updateEditorStats();
+    return;
+  }
+  state.syncingEditor = true;
+  state.editor.setValue(nextValue);
+  state.editor.clearHistory();
+  state.syncingEditor = false;
+  updateEditorStats();
+}
+
+function setEditorEnabled(enabled) {
+  if (!state.editor) return;
+  state.editor.setOption("readOnly", enabled ? false : "nocursor");
+}
+
+function toggleEditorMode() {
+  state.editorMode = state.editorMode === "vim" ? "default" : "vim";
+  if (state.editorMode === "vim" && (!window.CodeMirror || !window.CodeMirror.keyMap.vim)) {
+    state.editorMode = "default";
+    setStatus("Vim 模式未加载", true);
+  }
+  localStorage.setItem(EDITOR_MODE_KEY, state.editorMode);
+  if (state.editor) {
+    state.editor.setOption("keyMap", state.editorMode === "vim" ? "vim" : "default");
+    state.editor.focus();
+  }
+  updateEditorStats();
+}
+
+function updateEditorStats() {
+  const value = getEditorValue();
+  const cursor = state.editor ? state.editor.getCursor() : textareaCursor(fields.content);
+  const charCount = value.replace(/\s/g, "").length;
+  elements.editorMode.textContent = state.editorMode === "vim" ? "Vim" : "Markdown";
+  elements.editorPosition.textContent = `Ln ${cursor.line + 1}, Col ${cursor.ch + 1}`;
+  elements.editorWords.textContent = `${charCount} 字`;
+  elements.toggleVim.classList.toggle("is-active", state.editorMode === "vim");
+  elements.toggleVim.setAttribute("aria-pressed", state.editorMode === "vim" ? "true" : "false");
+}
+
+function textareaCursor(textarea) {
+  const value = textarea.value.slice(0, textarea.selectionStart || 0);
+  const lines = value.split("\n");
+  return {
+    line: Math.max(lines.length - 1, 0),
+    ch: lines[lines.length - 1]?.length || 0
+  };
 }
 
 function contentWithoutTitleHeading(note) {

@@ -177,6 +177,7 @@
 
 .count-pill,
 .state-pill,
+.category-pill,
 .tag-pill {
   display: inline-flex;
   align-items: center;
@@ -213,6 +214,11 @@
 .tag-pill {
   color: #5f5e5a;
   background: #f1f1ef;
+}
+
+.category-pill {
+  color: #6b5d3f;
+  background: #f4eee1;
 }
 
 .search-block,
@@ -338,6 +344,149 @@
   background: transparent;
 }
 
+.editor-field {
+  border-bottom: 0;
+}
+
+.editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 8px;
+}
+
+.editor-head > span {
+  margin: 0;
+}
+
+.editor-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.editor-toggle.is-active {
+  color: var(--note-text);
+  background: #e8e8e6;
+}
+
+.editor-stat {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 7px;
+  border-radius: 4px;
+  color: var(--note-muted);
+  background: transparent;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.editor-field .CodeMirror {
+  width: 100%;
+  min-height: 560px;
+  height: auto;
+  border: 0;
+  color: var(--note-text);
+  background: transparent;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 1rem;
+  line-height: 1.86;
+}
+
+.editor-field .CodeMirror-scroll {
+  min-height: 560px;
+  overflow-x: hidden !important;
+}
+
+.editor-field .CodeMirror-lines {
+  padding: 18px 0 46px;
+}
+
+.editor-field .CodeMirror pre.CodeMirror-line,
+.editor-field .CodeMirror pre.CodeMirror-line-like {
+  padding: 0;
+  line-height: 1.86;
+}
+
+.editor-field .CodeMirror-placeholder {
+  color: #aaa9a5;
+}
+
+.editor-field .CodeMirror-cursor {
+  border-left: 1.5px solid var(--note-text);
+}
+
+.editor-field .CodeMirror-selected {
+  background: rgba(35, 131, 226, 0.16);
+}
+
+.editor-field .CodeMirror-focused .CodeMirror-selected {
+  background: rgba(35, 131, 226, 0.2);
+}
+
+.editor-field .CodeMirror-activeline-background {
+  background: #fafaf8;
+}
+
+.editor-field .CodeMirror-matchingbracket {
+  color: var(--note-text) !important;
+  background: #ececea;
+}
+
+.editor-field .CodeMirror-dialog {
+  border-top: 1px solid var(--note-line);
+  color: var(--note-text);
+  background: #fbfbfa;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.editor-field .CodeMirror-dialog input {
+  min-height: 30px;
+  border: 1px solid var(--note-line);
+  border-radius: 4px;
+  color: var(--note-text);
+  background: #ffffff;
+}
+
+.editor-field .cm-header {
+  color: #2f2d29;
+  font-weight: 700;
+}
+
+.editor-field .cm-strong {
+  color: #2f2d29;
+  font-weight: 700;
+}
+
+.editor-field .cm-em {
+  color: #5f5e5a;
+}
+
+.editor-field .cm-quote {
+  color: var(--note-muted);
+}
+
+.editor-field .cm-link {
+  color: var(--note-blue);
+}
+
+.editor-field .cm-url {
+  color: #6a7f52;
+}
+
+.editor-field .cm-comment,
+.editor-field .cm-formatting {
+  color: #8d8c88;
+}
+
+.category-strip,
 .tag-strip,
 .admin-actions,
 .sync-actions {
@@ -346,10 +495,16 @@
   gap: 6px;
 }
 
+.category-strip {
+  padding: 10px 14px 8px;
+  border-bottom: 1px solid var(--note-line);
+}
+
 .tag-strip {
   padding: 0 14px 12px;
 }
 
+.category-filter,
 .tag-filter,
 .ghost-button,
 .solid-button,
@@ -369,6 +524,7 @@
   transition: transform 140ms ease, background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
 
+.category-filter:hover,
 .tag-filter:hover,
 .ghost-button:hover,
 .danger-button:hover,
@@ -377,6 +533,7 @@
   color: var(--note-text);
 }
 
+.category-filter.is-active,
 .tag-filter.is-active {
   color: var(--note-text);
   background: #e8e8e6;
@@ -941,6 +1098,21 @@
     min-height: 420px;
   }
 
+  .editor-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .editor-controls {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .editor-field .CodeMirror,
+  .editor-field .CodeMirror-scroll {
+    min-height: 460px;
+  }
+
   .preview-summary,
   .preview-body,
   .connection-panel summary,
@@ -953,6 +1125,7 @@
     grid-template-columns: 1fr;
   }
 
+  .category-filter,
   .tag-filter,
   .ghost-button,
   .solid-button,

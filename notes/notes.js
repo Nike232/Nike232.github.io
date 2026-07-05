@@ -4,12 +4,13 @@ const tools = window.TomfngNoteTools;
 if (!root || root.dataset.ready === "true" || !tools) return;
 root.dataset.ready = "true";
 
-const { escapeHtml, formatDate, markdownToHtml, normalizeNotesData } = tools;
+const { escapeHtml, formatDate, markdownToHtml, normalizeCategory, normalizeNotesData } = tools;
 
 const DATA_URL = "/notes-data.json";
 const state = {
   data: normalizeNotesData({ notes: [] }),
   query: "",
+  category: "all",
   tag: "all",
   selectedId: null
 };
@@ -17,6 +18,7 @@ const state = {
 const elements = {
   count: root.querySelector("#note-count"),
   search: root.querySelector("#search-input"),
+  categoryStrip: root.querySelector("#category-strip"),
   tagStrip: root.querySelector("#tag-strip"),
   list: root.querySelector("#note-list"),
   view: root.querySelector("#note-view")
@@ -52,17 +54,20 @@ async function loadNotes() {
 function getFilteredNotes() {
   const query = state.query;
   return state.data.notes.filter((note) => {
+    const category = normalizeCategory(note.category);
+    const matchesCategory = state.category === "all" || category === state.category;
     const matchesTag = state.tag === "all" || note.tags.includes(state.tag);
-    const haystack = [note.title, note.summary, note.content, note.tags.join(" ")].join(" ").toLowerCase();
+    const haystack = [note.title, category, note.summary, note.content, note.tags.join(" ")].join(" ").toLowerCase();
     const matchesQuery = !query || haystack.includes(query);
-    return matchesTag && matchesQuery && note.status !== "archived";
+    return matchesCategory && matchesTag && matchesQuery && note.status !== "archived";
   });
 }
 
 function render() {
+  renderCategories();
+  renderTags();
   const filtered = getFilteredNotes();
   elements.count.textContent = `${filtered.length}`;
-  renderTags();
   renderList(filtered);
   if (!filtered.some((note) => note.id === state.selectedId)) {
     state.selectedId = filtered[0]?.id || null;
@@ -70,8 +75,36 @@ function render() {
   renderSelected(filtered);
 }
 
+function renderCategories() {
+  const categories = [...new Set(state.data.notes
+    .filter((note) => note.status !== "archived")
+    .map((note) => normalizeCategory(note.category)))]
+    .sort((a, b) => a.localeCompare(b, "zh-CN"));
+  if (state.category !== "all" && !categories.includes(state.category)) {
+    state.category = "all";
+  }
+  const buttons = ["all", ...categories].map((category) => {
+    const label = category === "all" ? "全部分类" : category;
+    const active = category === state.category ? " is-active" : "";
+    return `<button class="category-filter${active}" type="button" data-category="${escapeHtml(category)}">${escapeHtml(label)}</button>`;
+  });
+  elements.categoryStrip.innerHTML = buttons.join("");
+  elements.categoryStrip.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.category = button.dataset.category;
+      render();
+    });
+  });
+}
+
 function renderTags() {
-  const tags = [...new Set(state.data.notes.flatMap((note) => note.tags))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+  const categoryNotes = state.data.notes.filter((note) => {
+    return note.status !== "archived" && (state.category === "all" || normalizeCategory(note.category) === state.category);
+  });
+  const tags = [...new Set(categoryNotes.flatMap((note) => note.tags))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+  if (state.tag !== "all" && !tags.includes(state.tag)) {
+    state.tag = "all";
+  }
   const buttons = ["all", ...tags].map((tag) => {
     const label = tag === "all" ? "全部" : tag;
     const active = tag === state.tag ? " is-active" : "";
@@ -108,7 +141,7 @@ function renderList(notes) {
           <span>${escapeHtml(note.title)}</span>
           <span class="state-pill state-${escapeHtml(note.status)}">${escapeHtml(note.status)}</span>
         </span>
-        <span class="note-row-meta">${formatDate(note.updatedAt)}</span>
+        <span class="note-row-meta">${escapeHtml(normalizeCategory(note.category))} / ${formatDate(note.updatedAt)}</span>
         <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 120) || "无摘要")}</span>
         <span>${tags}</span>
       </button>
@@ -139,6 +172,7 @@ function renderSelected(notes) {
   const tags = note.tags.map((tag) => `<span class="tag-pill">${escapeHtml(tag)}</span>`).join("");
   elements.view.innerHTML = `
     <div class="note-kicker">
+      <span class="category-pill">${escapeHtml(normalizeCategory(note.category))}</span>
       <span>${formatDate(note.updatedAt)}</span>
       <span class="state-pill state-${escapeHtml(note.status)}">${escapeHtml(note.status)}</span>
       ${tags}
