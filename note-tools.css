@@ -513,10 +513,12 @@
   z-index: 4;
   display: block;
   pointer-events: none;
-  border-radius: 1px;
-  background: rgba(47, 45, 41, 0.18);
-  box-shadow: none;
-  mix-blend-mode: multiply;
+  border-radius: 2px;
+  background: transparent;
+  box-shadow:
+    inset 0 0 0 1.25px rgba(47, 45, 41, 0.5),
+    inset 0 -2px 0 rgba(47, 45, 41, 0.28);
+  mix-blend-mode: normal;
 }
 
 .editor-field .note-vim-block-cursor-marker[hidden] {
