@@ -126,16 +126,23 @@ function initMarkdownEditor() {
   }
 
   state.editor = window.CodeMirror.fromTextArea(fields.content, {
-    mode: "markdown",
+    mode: {
+      name: "markdown",
+      highlightFormatting: true,
+      taskLists: true,
+      strikethrough: true
+    },
     keyMap: requestedKeyMap,
     lineWrapping: true,
     lineNumbers: false,
-    styleActiveLine: true,
+    styleActiveLine: false,
     autoCloseBrackets: true,
     matchBrackets: true,
     indentUnit: 2,
     tabSize: 2,
     indentWithTabs: false,
+    cursorHeight: 0.82,
+    cursorBlinkRate: 600,
     viewportMargin: 40,
     placeholder: fields.content.getAttribute("placeholder") || "",
     extraKeys: {
