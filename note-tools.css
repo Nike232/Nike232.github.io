@@ -451,7 +451,10 @@
 }
 
 .editor-field .CodeMirror-cursor {
-  border-left: 2px solid var(--note-text);
+  height: 1.48em !important;
+  margin-top: 0.26em;
+  border-left: 1.5px solid var(--note-text);
+  border-right: 0;
 }
 
 .editor-field .CodeMirror-selected {
@@ -469,8 +472,11 @@
 }
 
 .editor-field .cm-fat-cursor .CodeMirror-cursor {
-  width: 0.62em !important;
+  width: 0.58em !important;
+  height: 1.38em !important;
+  margin-top: 0.31em;
   border: 0 !important;
+  border-radius: 2px;
   background: rgba(47, 45, 41, 0.2) !important;
 }
 
