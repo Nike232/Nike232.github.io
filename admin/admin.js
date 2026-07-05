@@ -262,47 +262,112 @@ function positionVimBlockCursor() {
   const marker = ensureVimBlockCursor();
   if (!wrapper || !marker || !wrapper.classList.contains("note-vim-block-cursor")) return;
 
-  const cursor = wrapper.querySelector(".CodeMirror-cursor");
-  const cursorRect = cursor?.getBoundingClientRect();
+  const charRect = getRenderedVimCharRect() || getMeasuredVimCharRect();
   const wrapperRect = wrapper.getBoundingClientRect();
-  if (!cursorRect || !cursorRect.height) {
+  if (!charRect || !charRect.height || !charRect.width) {
     setVimBlockCursorVisible(false);
     return;
   }
 
-  const position = state.editor.getCursor();
-  const line = state.editor.getLine(position.line) || "";
-  const charIndex = Math.min(position.ch, Math.max(line.length - 1, 0));
-  const char = line.charAt(charIndex) || " ";
-  const width = measureVimCursorChar(char, wrapper);
-  marker.style.left = `${cursorRect.left - wrapperRect.left}px`;
-  marker.style.top = `${cursorRect.top - wrapperRect.top}px`;
-  marker.style.width = `${width}px`;
-  marker.style.height = `${cursorRect.height}px`;
+  marker.style.left = `${charRect.left - wrapperRect.left}px`;
+  marker.style.top = `${charRect.top - wrapperRect.top}px`;
+  marker.style.width = `${charRect.width}px`;
+  marker.style.height = `${charRect.height}px`;
   marker.hidden = false;
 }
 
-function measureVimCursorChar(char, wrapper) {
-  const code = wrapper.querySelector(".CodeMirror-code") || wrapper;
-  const style = getComputedStyle(code);
-  const fallback = Number.parseFloat(style.fontSize || "18") * 0.58;
-  const probe = measureVimCursorChar.probe || document.createElement("span");
-  if (!measureVimCursorChar.probe) {
-    probe.style.position = "fixed";
-    probe.style.top = "-9999px";
-    probe.style.left = "-9999px";
-    probe.style.visibility = "hidden";
-    probe.style.whiteSpace = "pre";
-    document.body.appendChild(probe);
-    measureVimCursorChar.probe = probe;
+function getRenderedVimCharRect() {
+  const position = state.editor.getCursor();
+  const line = state.editor.getLine(position.line) || "";
+  if (!line.length) return null;
+
+  const lineNode = getRenderedLineNode(position.line);
+  if (!lineNode) return null;
+
+  const startIndex = Math.min(position.ch, line.length - 1);
+  for (const charIndex of nearbyIndexes(startIndex, line.length)) {
+    const rect = getTextRangeRect(lineNode, charIndex);
+    if (isUsableVimRect(rect)) return rect;
   }
-  probe.style.fontFamily = style.fontFamily;
-  probe.style.fontSize = style.fontSize;
-  probe.style.fontWeight = style.fontWeight;
-  probe.style.letterSpacing = style.letterSpacing;
-  probe.textContent = char === "\t" ? "  " : char || " ";
-  const measured = probe.getBoundingClientRect().width;
-  return Math.max(7, Math.min(measured || fallback, fallback * 2.4));
+  return null;
+}
+
+function getMeasuredVimCharRect() {
+  const position = state.editor.getCursor();
+  const line = state.editor.getLine(position.line) || "";
+  const ch = Math.min(position.ch, Math.max(line.length - 1, 0));
+  const from = state.editor.charCoords({ line: position.line, ch }, "window");
+  const to = state.editor.charCoords({ line: position.line, ch: ch + 1 }, "window");
+  const width = Math.max(7, Math.abs((to.left || to.right) - from.left) || state.editor.defaultCharWidth?.() || 8);
+  return {
+    left: from.left,
+    right: from.left + width,
+    top: from.top,
+    bottom: from.bottom,
+    width,
+    height: Math.max(2, from.bottom - from.top)
+  };
+}
+
+function getRenderedLineNode(lineNumber) {
+  const display = state.editor.display;
+  if (!display?.view?.length) return null;
+
+  for (const lineView of display.view) {
+    const firstLine = typeof lineView.line?.lineNo === "function" ? lineView.line.lineNo() : null;
+    const lineCount = lineView.size || 1;
+    if (firstLine === null || lineNumber < firstLine || lineNumber >= firstLine + lineCount) continue;
+
+    if (lineCount === 1) return lineView.text || lineView.node || null;
+    const lineNodes = lineView.node
+      ? [...lineView.node.querySelectorAll("pre.CodeMirror-line, pre.CodeMirror-line-like")]
+      : [];
+    return lineNodes[lineNumber - firstLine] || lineView.text || lineView.node || null;
+  }
+  return null;
+}
+
+function nearbyIndexes(startIndex, length) {
+  const indexes = [startIndex];
+  for (let offset = 1; offset < length; offset += 1) {
+    if (startIndex + offset < length) indexes.push(startIndex + offset);
+    if (startIndex - offset >= 0) indexes.push(startIndex - offset);
+  }
+  return indexes;
+}
+
+function getTextRangeRect(root, charIndex) {
+  const match = findTextNodeAt(root, charIndex);
+  if (!match) return null;
+
+  const range = document.createRange();
+  range.setStart(match.node, match.offset);
+  range.setEnd(match.node, Math.min(match.offset + 1, match.node.nodeValue.length));
+  const rect = [...range.getClientRects()].find(isUsableVimRect) || range.getBoundingClientRect();
+  range.detach?.();
+  return rect;
+}
+
+function findTextNodeAt(root, charIndex) {
+  let remaining = charIndex;
+  const visit = (node) => {
+    if (node.nodeType === 3) {
+      const length = node.nodeValue.length;
+      if (remaining < length) return { node, offset: remaining };
+      remaining -= length;
+      return null;
+    }
+    for (const child of node.childNodes) {
+      const match = visit(child);
+      if (match) return match;
+    }
+    return null;
+  };
+  return visit(root);
+}
+
+function isUsableVimRect(rect) {
+  return Boolean(rect && rect.width >= 2 && rect.height >= 8);
 }
 
 async function loadPublicData() {
