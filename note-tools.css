@@ -471,13 +471,42 @@
   background: transparent !important;
 }
 
-.editor-field .cm-fat-cursor .CodeMirror-cursor {
-  width: 0.58em !important;
-  height: 1.38em !important;
-  margin-top: 0.31em;
+.editor-field .cm-fat-cursor .CodeMirror-cursor,
+.editor-field .note-vim-thin-cursor .CodeMirror-cursor {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  height: 1.48em !important;
+  margin-top: 0.26em;
+  padding: 0 !important;
   border: 0 !important;
-  border-radius: 2px;
-  background: rgba(47, 45, 41, 0.2) !important;
+  border-left: 1.5px solid var(--note-text) !important;
+  border-radius: 0;
+  overflow: hidden !important;
+  color: transparent;
+  background: transparent !important;
+  box-shadow: none !important;
+  animation: none !important;
+}
+
+.editor-field .cm-fat-cursor div.CodeMirror-cursors,
+.editor-field .note-vim-thin-cursor div.CodeMirror-cursors {
+  z-index: 3;
+}
+
+.editor-field .cm-animate-fat-cursor {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  height: 1.48em !important;
+  margin-top: 0.26em;
+  padding: 0 !important;
+  border-left: 1.5px solid var(--note-text) !important;
+  overflow: hidden !important;
+  color: transparent;
+  background: transparent !important;
+  box-shadow: none !important;
+  animation: none !important;
 }
 
 .editor-field .CodeMirror-matchingbracket {

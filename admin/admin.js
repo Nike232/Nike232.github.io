@@ -192,8 +192,31 @@ function initMarkdownEditor() {
     updateSelectedFromFields();
     updateEditorStats();
   });
-  state.editor.on("cursorActivity", updateEditorStats);
+  state.editor.on("cursorActivity", () => {
+    updateEditorStats();
+    syncEditorCursorStyle();
+  });
+  state.editor.on("vim-mode-change", syncEditorCursorStyle);
+  syncEditorCursorStyle();
   updateEditorStats();
+}
+
+function syncEditorCursorStyle() {
+  if (!state.editor || !window.CodeMirror) return;
+  const wrapper = state.editor.getWrapperElement?.();
+  if (!wrapper) return;
+
+  if (state.editorMode !== "vim") {
+    window.CodeMirror.rmClass(wrapper, "note-vim-thin-cursor");
+    return;
+  }
+
+  state.editor.options.$customCursor = null;
+  window.CodeMirror.rmClass(wrapper, "cm-fat-cursor");
+  window.CodeMirror.addClass(wrapper, "note-vim-thin-cursor");
+  if (state.editor.getOption("showCursorWhenSelecting") !== true) {
+    state.editor.setOption("showCursorWhenSelecting", true);
+  }
 }
 
 async function loadPublicData() {
@@ -442,6 +465,8 @@ function toggleEditorMode() {
   if (state.editor) {
     const defaultKeyMap = window.CodeMirror?.keyMap?.hypermd ? "hypermd" : "default";
     state.editor.setOption("keyMap", state.editorMode === "vim" ? "vim" : defaultKeyMap);
+    syncEditorCursorStyle();
+    window.requestAnimationFrame?.(syncEditorCursorStyle);
     state.editor.focus();
   }
   updateEditorStats();
