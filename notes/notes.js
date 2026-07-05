@@ -91,8 +91,8 @@ function renderList(notes) {
     elements.list.innerHTML = `
       <div class="empty-state">
         <h2>还没有笔记</h2>
-        <p>新的笔记会出现在这里。</p>
-        <a class="button-link" href="/admin/">New note</a>
+        <p>从管理页新建一条笔记后，这里会变成你的文档列表。</p>
+        <a class="button-link" href="/admin/">新建笔记</a>
       </div>
     `;
     return;
@@ -143,8 +143,15 @@ function renderSelected(notes) {
     </div>
     <h1>${escapeHtml(note.title)}</h1>
     ${note.summary ? `<p class="note-summary">${escapeHtml(note.summary)}</p>` : ""}
-    <div class="markdown-body">${markdownToHtml(note.content || " ")}</div>
+    <div class="markdown-body">${markdownToHtml(contentWithoutTitleHeading(note) || " ")}</div>
   `;
+}
+
+function contentWithoutTitleHeading(note) {
+  const title = String(note.title || "").trim();
+  if (!title) return note.content || "";
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(note.content || "").replace(new RegExp(`^#\\s+${escaped}\\s*(\\n|$)`, "i"), "").trimStart();
 }
 
 function renderLoading() {
@@ -164,7 +171,7 @@ function renderError(error) {
     <div class="error-state">
       <h2>读取失败</h2>
       <p>${escapeHtml(error.message || "无法读取 notes-data.json")}</p>
-      <button class="ghost-button" type="button" id="retry-load">Retry</button>
+      <button class="ghost-button" type="button" id="retry-load">重试</button>
     </div>
   `;
   root.querySelector("#retry-load")?.addEventListener("click", loadNotes);

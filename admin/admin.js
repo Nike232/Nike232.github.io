@@ -78,7 +78,7 @@ async function init() {
   if (localData) {
     state.data = normalizeNotesData(localData);
     state.selectedId = state.data.notes[0]?.id || null;
-    setStatus("Local draft loaded");
+    setStatus("已载入本地草稿");
     render();
     return;
   }
@@ -105,9 +105,9 @@ async function loadPublicData() {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     state.data = normalizeNotesData(await response.json());
     state.selectedId = state.data.notes[0]?.id || null;
-    setStatus("Public data loaded");
+    setStatus("已载入公开数据");
   } catch (error) {
-    setStatus(`Public load failed: ${error.message}`, true);
+    setStatus(`读取失败：${error.message}`, true);
   } finally {
     setBusy(false);
     render();
@@ -123,13 +123,13 @@ function createNote() {
     tags: [],
     status: "draft",
     summary: "",
-    content: "# 未命名笔记\n\n",
+    content: "",
     createdAt: now,
     updatedAt: now
   });
   state.data.notes.unshift(note);
   state.selectedId = note.id;
-  markDirty("New note");
+  markDirty("新建页面");
   render();
 }
 
@@ -140,7 +140,7 @@ function duplicateSelectedNote() {
   const copy = normalizeNote({
     ...note,
     id: makeId(),
-    title: `${note.title} copy`,
+    title: `${note.title} 副本`,
     slug: `${note.slug || makeSlug(note.title)}-copy`,
     status: "draft",
     createdAt: now,
@@ -148,7 +148,7 @@ function duplicateSelectedNote() {
   });
   state.data.notes.unshift(copy);
   state.selectedId = copy.id;
-  markDirty("Duplicated locally");
+  markDirty("已复制到本地");
   render();
 }
 
@@ -157,7 +157,7 @@ function deleteSelectedNote() {
   if (!note) return;
   state.data.notes = state.data.notes.filter((item) => item.id !== note.id);
   state.selectedId = state.data.notes[0]?.id || null;
-  markDirty("Deleted locally");
+  markDirty("已在本地删除");
   render();
 }
 
@@ -171,7 +171,7 @@ function updateSelectedFromFields() {
   note.summary = fields.summary.value.trimStart();
   note.content = fields.content.value;
   note.updatedAt = new Date().toISOString();
-  markDirty("Editing");
+  markDirty("正在编辑");
   renderList();
   renderPreview(note);
   validateSelected();
@@ -188,8 +188,8 @@ function renderList() {
   if (!state.data.notes.length) {
     elements.list.innerHTML = `
       <div class="empty-state">
-        <h2>Library is empty</h2>
-        <p>新的笔记会出现在这里。</p>
+        <h2>没有页面</h2>
+        <p>点击新建，开始写第一条笔记。</p>
       </div>
     `;
     return;
@@ -233,12 +233,12 @@ function renderEditor() {
     fields.status.value = "draft";
     fields.summary.value = "";
     fields.content.value = "";
-    elements.previewTitle.textContent = "No selection";
+    elements.previewTitle.textContent = "未选择页面";
     elements.previewSummary.textContent = "";
     elements.previewContent.innerHTML = `
       <div class="empty-state">
         <h2>空白工作区</h2>
-        <p>创建一条新笔记后开始编辑。</p>
+        <p>从左侧新建或选择一条笔记。</p>
       </div>
     `;
     return;
@@ -257,7 +257,14 @@ function renderEditor() {
 function renderPreview(note) {
   elements.previewTitle.textContent = note.title || "未命名笔记";
   elements.previewSummary.textContent = note.summary || "";
-  elements.previewContent.innerHTML = markdownToHtml(note.content || " ");
+  elements.previewContent.innerHTML = markdownToHtml(contentWithoutTitleHeading(note) || " ");
+}
+
+function contentWithoutTitleHeading(note) {
+  const title = String(note.title || "").trim();
+  if (!title) return note.content || "";
+  const escaped = title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return String(note.content || "").replace(new RegExp(`^#\\s+${escaped}\\s*(\\n|$)`, "i"), "").trimStart();
 }
 
 function renderDirtyState() {
@@ -271,11 +278,11 @@ function validateSelected() {
   elements.errorTitle.textContent = "";
   elements.errorSlug.textContent = "";
   if (!note.title.trim()) {
-    elements.errorTitle.textContent = "Title is required.";
+    elements.errorTitle.textContent = "需要标题";
     valid = false;
   }
   if (!note.slug.trim()) {
-    elements.errorSlug.textContent = "Slug is required.";
+    elements.errorSlug.textContent = "需要 slug";
     valid = false;
   }
   return valid;
@@ -313,7 +320,7 @@ function persistWorkspace(report) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
   if (report) {
     state.dirty = false;
-    setStatus("Local workspace saved");
+    setStatus("已保存到本地");
     renderDirtyState();
   }
 }
@@ -352,7 +359,7 @@ function saveConfig() {
     path: elements.configPath.value.trim() || DEFAULT_CONFIG.path
   };
   localStorage.setItem(CONFIG_KEY, JSON.stringify(state.config));
-  setStatus("GitHub config saved");
+  setStatus("GitHub 配置已保存");
 }
 
 function loadConfig() {
@@ -367,7 +374,7 @@ function loadConfig() {
 async function pullRemote() {
   saveConfig();
   if (!state.config.token) {
-    setStatus("Token is required.", true);
+    setStatus("需要 GitHub Token", true);
     return;
   }
   setBusy(true);
@@ -378,10 +385,10 @@ async function pullRemote() {
     state.selectedId = state.data.notes[0]?.id || null;
     state.dirty = false;
     persistWorkspace(false);
-    setStatus("Remote data loaded");
+    setStatus("已拉取远程数据");
     render();
   } catch (error) {
-    setStatus(`Pull failed: ${error.message}`, true);
+    setStatus(`拉取失败：${error.message}`, true);
   } finally {
     setBusy(false);
   }
@@ -390,7 +397,7 @@ async function pullRemote() {
 async function publishRemote() {
   saveConfig();
   if (!state.config.token) {
-    setStatus("Token is required.", true);
+    setStatus("需要 GitHub Token", true);
     return;
   }
   if (!validateSelected() && state.data.notes.length) return;
@@ -421,10 +428,10 @@ async function publishRemote() {
     state.data = normalizeNotesData(payload);
     state.dirty = false;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    setStatus("Published to GitHub");
+    setStatus("已发布到 GitHub");
     render();
   } catch (error) {
-    setStatus(`Publish failed: ${error.message}`, true);
+    setStatus(`发布失败：${error.message}`, true);
   } finally {
     setBusy(false);
   }
