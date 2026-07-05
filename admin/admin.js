@@ -120,19 +120,30 @@ function initMarkdownEditor() {
     return;
   }
 
+  const useHyperMD = Boolean(window.HyperMD && typeof window.HyperMD.fromTextArea === "function");
   const requestedKeyMap = state.editorMode === "vim" && window.CodeMirror.keyMap.vim ? "vim" : "default";
   if (requestedKeyMap !== "vim") {
     state.editorMode = "default";
   }
+  const defaultKeyMap = useHyperMD && window.CodeMirror.keyMap.hypermd ? "hypermd" : "default";
+  const enterCommand = window.CodeMirror.commands.hmdNewlineAndContinue
+    ? "hmdNewlineAndContinue"
+    : "newlineAndIndentContinueMarkdownList";
+  const shiftEnterCommand = window.CodeMirror.commands.hmdNewline
+    ? "hmdNewline"
+    : enterCommand;
+  const tabCommand = window.CodeMirror.commands.hmdTab ? "hmdTab" : null;
+  const shiftTabCommand = window.CodeMirror.commands.hmdShiftTab ? "hmdShiftTab" : "indentLess";
 
-  state.editor = window.CodeMirror.fromTextArea(fields.content, {
-    mode: {
+  const editorOptions = {
+    mode: useHyperMD ? "text/x-hypermd" : {
       name: "markdown",
       highlightFormatting: true,
       taskLists: true,
       strikethrough: true
     },
-    keyMap: requestedKeyMap,
+    theme: useHyperMD ? "hypermd-light" : "default",
+    keyMap: requestedKeyMap === "vim" ? "vim" : defaultKeyMap,
     lineWrapping: true,
     lineNumbers: false,
     styleActiveLine: false,
@@ -145,12 +156,21 @@ function initMarkdownEditor() {
     cursorBlinkRate: 600,
     viewportMargin: 40,
     placeholder: fields.content.getAttribute("placeholder") || "",
+    foldGutter: false,
+    gutters: [],
+    hmdFoldMath: false,
+    hmdModeLoader: false,
     extraKeys: {
-      Enter: "newlineAndIndentContinueMarkdownList",
+      Enter: enterCommand,
+      "Shift-Enter": shiftEnterCommand,
       Tab(cm) {
+        if (tabCommand) {
+          window.CodeMirror.commands[tabCommand](cm);
+          return;
+        }
         cm.replaceSelection("  ", "end");
       },
-      "Shift-Tab": "indentLess",
+      "Shift-Tab": shiftTabCommand,
       "Ctrl-S"(cm) {
         cm.save();
         saveWorkspace();
@@ -160,7 +180,11 @@ function initMarkdownEditor() {
         saveWorkspace();
       }
     }
-  });
+  };
+
+  state.editor = useHyperMD
+    ? window.HyperMD.fromTextArea(fields.content, editorOptions)
+    : window.CodeMirror.fromTextArea(fields.content, editorOptions);
 
   state.editor.on("change", () => {
     if (state.syncingEditor) return;
@@ -416,7 +440,8 @@ function toggleEditorMode() {
   }
   localStorage.setItem(EDITOR_MODE_KEY, state.editorMode);
   if (state.editor) {
-    state.editor.setOption("keyMap", state.editorMode === "vim" ? "vim" : "default");
+    const defaultKeyMap = window.CodeMirror?.keyMap?.hypermd ? "hypermd" : "default";
+    state.editor.setOption("keyMap", state.editorMode === "vim" ? "vim" : defaultKeyMap);
     state.editor.focus();
   }
   updateEditorStats();
@@ -426,7 +451,7 @@ function updateEditorStats() {
   const value = getEditorValue();
   const cursor = state.editor ? state.editor.getCursor() : textareaCursor(fields.content);
   const charCount = value.replace(/\s/g, "").length;
-  elements.editorMode.textContent = state.editorMode === "vim" ? "Vim" : "Markdown";
+  elements.editorMode.textContent = state.editorMode === "vim" ? "Vim" : "所见";
   elements.editorPosition.textContent = `Ln ${cursor.line + 1}, Col ${cursor.ch + 1}`;
   elements.editorWords.textContent = `${charCount} 字`;
   elements.toggleVim.classList.toggle("is-active", state.editorMode === "vim");

@@ -438,7 +438,7 @@
   padding: 0 !important;
   border: 0 !important;
   color: var(--note-text);
-  font-family: var(--note-editor);
+  font-family: var(--note-editor) !important;
   font-size: var(--note-editor-size) !important;
   line-height: var(--note-editor-line) !important;
   word-break: break-word;
@@ -548,6 +548,198 @@
   font-family: var(--note-mono);
   font-size: 0.82em;
   font-weight: 500;
+}
+
+.editor-field .cm-s-hypermd-light {
+  color: var(--note-text);
+  background: transparent;
+  font-family: var(--note-editor);
+  font-size: var(--note-editor-size);
+  line-height: var(--note-editor-line);
+  -webkit-font-smoothing: initial;
+}
+
+.editor-field .cm-s-hypermd-light .CodeMirror-lines,
+.editor-field .cm-s-hypermd-light .CodeMirror-code {
+  padding-right: 0;
+}
+
+.editor-field .cm-s-hypermd-light .CodeMirror-line {
+  padding: 0;
+}
+
+.editor-field .cm-s-hypermd-light pre.CodeMirror-line,
+.editor-field .cm-s-hypermd-light pre.CodeMirror-line-like {
+  min-height: 1.75em;
+  font-family: var(--note-editor) !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.CodeMirror-line > span,
+.editor-field .cm-s-hypermd-light pre.CodeMirror-line-like > span,
+.editor-field .cm-s-hypermd-light pre.CodeMirror-line span:not(.cm-inline-code):not(.cm-formatting-code),
+.editor-field .cm-s-hypermd-light pre.CodeMirror-line-like span:not(.cm-inline-code):not(.cm-formatting-code) {
+  font-family: var(--note-editor) !important;
+}
+
+.editor-field .cm-s-hypermd-light .cm-header-1,
+.editor-field .cm-s-hypermd-light .cm-header-2,
+.editor-field .cm-s-hypermd-light .cm-header-3 {
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-header {
+  margin: 1.08rem 0 0.34rem !important;
+  padding: 0 !important;
+  border: 0 !important;
+  color: #24231f;
+  background: transparent !important;
+  font-family: var(--note-sans) !important;
+  font-weight: 650;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-header::after {
+  display: none !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-header.HyperMD-header-1 {
+  font-size: clamp(1.52rem, 2.1vw, 2rem) !important;
+  line-height: 1.28 !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-header.HyperMD-header-2 {
+  font-size: clamp(1.28rem, 1.7vw, 1.55rem) !important;
+  line-height: 1.36 !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-header.HyperMD-header-3 {
+  font-size: 1.16rem !important;
+  line-height: 1.5 !important;
+}
+
+.editor-field .cm-s-hypermd-light span.cm-formatting-header,
+.editor-field .cm-s-hypermd-light span.cm-formatting-list,
+.editor-field .cm-s-hypermd-light span.cm-formatting-quote {
+  color: #b8b6b0;
+  font-family: var(--note-mono);
+  font-size: 0.72em;
+  font-weight: 500;
+}
+
+.editor-field .cm-s-hypermd-light span.hmd-hidden-token {
+  opacity: 0;
+}
+
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-header,
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-em,
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-strong,
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-code,
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-link {
+  color: transparent !important;
+}
+
+.editor-field .cm-s-hypermd-light pre:not(.HyperMD-header) span.cm-strong {
+  color: #24231f;
+  font-weight: 650;
+}
+
+.editor-field .cm-s-hypermd-light span.cm-em {
+  color: #55524b;
+}
+
+.editor-field .cm-s-hypermd-light span.cm-inline-code,
+.editor-field .cm-s-hypermd-light span.cm-comment {
+  padding: 0.1rem 0.28rem;
+  border-radius: 4px;
+  color: #6a5c42;
+  background: #f3f1ea;
+  font-family: var(--note-mono) !important;
+  font-size: 0.88em;
+}
+
+.editor-field .cm-s-hypermd-light span.cm-formatting-code.hmd-hidden-token {
+  padding: 0;
+  background: transparent;
+}
+
+.editor-field .cm-s-hypermd-light span.cm-link,
+.editor-field .cm-s-hypermd-light span.cm-url {
+  color: var(--note-blue);
+  text-decoration: underline;
+  text-decoration-color: rgba(35, 131, 226, 0.28);
+  text-underline-offset: 3px;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-quote {
+  padding-left: 18px !important;
+  color: var(--note-muted);
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-quote::before {
+  left: 0;
+  width: 3px !important;
+  border-radius: 99px;
+  background: #d8d6d0 !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock {
+  margin: 0.35rem 0 !important;
+  padding: 0.55rem 0.7rem !important;
+  border: 1px solid var(--note-line-soft) !important;
+  border-radius: 6px !important;
+  color: #3e3b35;
+  background: #f7f7f5 !important;
+  font-family: var(--note-mono) !important;
+  font-size: 0.92rem !important;
+  line-height: 1.75 !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span {
+  font-family: var(--note-mono) !important;
+}
+
+.editor-field .cm-s-hypermd-light div.HyperMD-codeblock-bg {
+  background: transparent !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line {
+  padding-left: 1.4em !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line span.cm-formatting-list,
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line span.cm-hmd-list-indent {
+  float: left;
+  width: 1.1em;
+  margin-left: -1.4em;
+  color: #a8a6a0;
+  text-align: center;
+  white-space: pre;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line span.cm-formatting-list-ul {
+  position: relative;
+  color: transparent;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line span.cm-formatting-list-ul::after {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1.1em;
+  color: #8f8d86;
+  content: "•";
+  font-family: var(--note-editor);
+  font-size: 0.92em;
+  text-align: center;
+}
+
+.editor-field .cm-s-hypermd-light span.cm-formatting-task {
+  color: var(--note-muted);
+}
+
+.editor-field .cm-s-hypermd-light .CodeMirror-selected,
+.editor-field .cm-s-hypermd-light.CodeMirror-focused .CodeMirror-selected {
+  background: rgba(191, 184, 166, 0.34) !important;
 }
 
 .category-strip,
