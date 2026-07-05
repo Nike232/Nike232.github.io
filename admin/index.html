@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Admin | Tomfng Notes</title>
+  <link rel="icon" href="/images/favicon.ico">
+  <link rel="stylesheet" href="/note-console.css">
+</head>
+<body class="note-console">
+  <header class="topbar">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>Notes Admin</span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="/">Home</a>
+      <a href="/notes/">Notes</a>
+      <a href="/admin/" aria-current="page">Admin</a>
+    </nav>
+  </header>
+
+  <main class="admin-layout">
+    <aside class="admin-sidebar" aria-label="Note manager">
+      <div class="rail-head">
+        <h1>Library</h1>
+        <span class="count-pill" id="admin-count">0</span>
+      </div>
+      <div class="admin-actions">
+        <button class="solid-button" id="new-note" type="button">New</button>
+        <button class="ghost-button" id="duplicate-note" type="button">Duplicate</button>
+        <button class="danger-button" id="delete-note" type="button">Delete</button>
+      </div>
+      <div class="admin-list" id="admin-list" aria-live="polite"></div>
+    </aside>
+
+    <section class="editor-panel" aria-label="Editor">
+      <div class="status-line">
+        <span class="status-text" id="status-text">Local workspace</span>
+        <div class="sync-actions">
+          <button class="ghost-button" id="pull-remote" type="button">Pull</button>
+          <button class="ghost-button" id="save-local" type="button">Save local</button>
+          <button class="solid-button" id="publish-remote" type="button">Publish</button>
+        </div>
+      </div>
+
+      <form class="editor-form" id="editor-form">
+        <div class="field-grid">
+          <label class="field">
+            <span>Title</span>
+            <input id="field-title" name="title" autocomplete="off">
+            <small class="field-error" id="error-title"></small>
+          </label>
+          <label class="field">
+            <span>Slug</span>
+            <input id="field-slug" name="slug" autocomplete="off">
+            <small class="field-error" id="error-slug"></small>
+          </label>
+          <label class="field">
+            <span>Tags</span>
+            <input id="field-tags" name="tags" autocomplete="off" placeholder="writing, idea">
+            <small class="field-error"></small>
+          </label>
+          <label class="field">
+            <span>Status</span>
+            <select id="field-status" name="status">
+              <option value="published">published</option>
+              <option value="draft">draft</option>
+              <option value="archived">archived</option>
+            </select>
+            <small class="field-error"></small>
+          </label>
+          <label class="field field-wide">
+            <span>Summary</span>
+            <textarea id="field-summary" name="summary" rows="3"></textarea>
+            <small class="field-error"></small>
+          </label>
+          <label class="field field-wide">
+            <span>Content</span>
+            <textarea class="editor-textarea" id="field-content" name="content" spellcheck="false"></textarea>
+            <small class="field-error"></small>
+          </label>
+        </div>
+      </form>
+    </section>
+
+    <aside class="preview-panel" aria-label="Preview">
+      <div class="preview-head">
+        <h2>Preview</h2>
+        <span class="state-pill" id="dirty-state">clean</span>
+      </div>
+      <p class="preview-summary" id="preview-summary"></p>
+      <div class="preview-body">
+        <h1 class="preview-title" id="preview-title"></h1>
+        <div class="markdown-body" id="preview-content"></div>
+      </div>
+    </aside>
+
+    <details class="connection-panel">
+      <summary>GitHub connection</summary>
+      <div class="token-grid">
+        <label>
+          <span>Token</span>
+          <input id="config-token" type="password" autocomplete="off">
+        </label>
+        <label>
+          <span>Owner</span>
+          <input id="config-owner" autocomplete="off">
+        </label>
+        <label>
+          <span>Repo</span>
+          <input id="config-repo" autocomplete="off">
+        </label>
+        <label>
+          <span>Branch</span>
+          <input id="config-branch" autocomplete="off">
+        </label>
+        <label>
+          <span>Path</span>
+          <input id="config-path" autocomplete="off">
+        </label>
+        <button class="ghost-button" id="save-config" type="button">Save config</button>
+      </div>
+    </details>
+  </main>
+
+  <script type="module" src="/admin/admin.js"></script>
+</body>
+</html>

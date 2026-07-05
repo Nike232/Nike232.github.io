@@ -1,0 +1,112 @@
+div.tabs {
+  display: block;
+  position: relative;
+  margin-top: 16px;
+  margin-bottom: 16px;
+  background: var(--color-card);
+}
+div.tabs .highlight,
+div.tabs p,
+div.tabs ul,
+div.tabs ol,
+div.tabs div.note,
+div.tabs details {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+div.tabs ul.nav-tabs {
+  display: table;
+  position: relative;
+  overflow-x: auto;
+  margin: 0 !important;
+  padding: 4px;
+  background: var(--third-background-color);
+  border-radius: $redefine-border-radius-medium;
+  line-height: 1.5;
+  text-align: center;
+  left: 50%;
+  transform: translateX(-50%);
+}
+div.tabs ul.nav-tabs li.tab {
+  list-style-type: none;
+  display: inline-block;
+  float: none;
+  margin-top: 0;
+  margin-bottom: 0;
+  margin-left: 10px;
+}
+div.tabs ul.nav-tabs li.tab:first-child {
+  margin-left: 0px;
+}
+div.tabs ul.nav-tabs li.tab:last-child {
+  padding-right: 0px;
+}
+div.tabs ul.nav-tabs li.tab a {
+  display: block;
+  cursor: pointer;
+  border-radius: $redefine-border-radius-small;
+  padding: 4px 8px;
+  text-align: center;
+  font-size: $fontsize-meta;
+  line-height: inherit;
+  font-weight: bold;
+  color: var(--default-text-color);
+  border: none;
+  text-decoration: none;
+}
+div.tabs ul.nav-tabs li.tab a:hover {
+  color: var(--primary-color);
+}
+div.tabs ul.nav-tabs li.tab a i {
+  pointer-events: none;
+}
+div.tabs ul.nav-tabs li.tab.active a {
+  cursor: default;
+  color: var(--primary-color);
+  background-color: var(--second-background-color);
+  box-shadow: var(--redefine-box-shadow-flat);
+  transition: transform 0.1s ease;
+}
+div.tabs .tab-content {
+  background-color: var(--second-background-color);
+  border-radius: $redefine-border-radius-medium;
+  box-shadow: var(--redefine-box-shadow-flat);
+  margin-top: 1rem;
+}
+div.tabs .tab-content .highlight-container[data-rel] {
+  border-radius: $redefine-border-radius-small;
+}
+div.tabs .tab-content .highlight {
+  border-radius: $redefine-border-radius-small-bottom;
+}
+div.tabs .tab-content blockquote {
+  border-radius: 0 $redefine-border-radius-small $redefine-border-radius-small 0;
+}
+div.tabs .tab-content .tab-pane {
+  padding: 20px;
+}
+div.tabs .tab-content .tab-pane:not(.active) {
+  display: none;
+}
+div.tabs .tab-content .tab-pane.active {
+  display: block;
+}
+div.tabs .tab-content .tab-pane *:last-child {
+  margin-bottom: 0;
+}
+div.tabs .tab-content .tab-pane > p:first-child,
+div.tabs .tab-content .tab-pane .tabs:first-child,
+div.tabs .tab-content .tab-pane ul:first-child,
+div.tabs .tab-content .tab-pane ol:first-child,
+div.tabs .tab-content .tab-pane .highlight:first-child,
+div.tabs .tab-content .tab-pane .note:first-child {
+  margin-top: 0;
+}
+div.tabs .tab-content .tab-pane > p:last-child,
+div.tabs .tab-content .tab-pane .tabs:last-child,
+div.tabs .tab-content .tab-pane ul:last-child,
+div.tabs .tab-content .tab-pane ol:last-child,
+div.tabs .tab-content .tab-pane .highlight:last-child,
+div.tabs .tab-content .tab-pane .note:last-child {
+  margin-bottom: 0;
+}
