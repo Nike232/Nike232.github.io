@@ -140,7 +140,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="https://tomfngblog.me/images/redefine-og.webp">
 <meta property="article:published_time" content="2026-07-05T09:10:00.000Z">
-<meta property="article:modified_time" content="2026-07-05T12:20:40.911Z">
+<meta property="article:modified_time" content="2026-07-05T13:40:01.628Z">
 <meta property="article:author" content="Tomfng">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="https://tomfngblog.me/images/redefine-og.webp">
@@ -792,11 +792,11 @@
 <section class="admin-layout">
 <aside class="admin-sidebar" aria-label="笔记列表">
 <div class="rail-head">
-<h2>库</h2>
+<h2>页面</h2>
 <span class="count-pill" id="admin-count">0</span>
 </div>
 <div class="admin-actions">
-<button class="solid-button" id="new-note" type="button"><i class="fa-solid fa-plus"></i><span>新建</span></button>
+<button class="solid-button" id="new-note" type="button"><i class="fa-solid fa-plus"></i><span>新页面</span></button>
 <button class="ghost-button" id="duplicate-note" type="button"><i class="fa-regular fa-copy"></i><span>复制</span></button>
 <button class="danger-button" id="delete-note" type="button"><i class="fa-regular fa-trash-can"></i><span>删除</span></button>
 </div>
@@ -815,7 +815,7 @@
 <div class="field-grid">
 <label class="field">
 <span>标题</span>
-<input id="field-title" name="title" autocomplete="off">
+<input id="field-title" name="title" autocomplete="off" placeholder="无标题">
 <small class="field-error" id="error-title"></small>
 </label>
 <label class="field">
@@ -839,28 +839,28 @@
 </label>
 <label class="field field-wide">
 <span>摘要</span>
-<textarea id="field-summary" name="summary" rows="3"></textarea>
+<textarea id="field-summary" name="summary" rows="3" placeholder="给这篇笔记留一句简短说明"></textarea>
 <small class="field-error"></small>
 </label>
 <label class="field field-wide">
 <span>正文</span>
-<textarea class="editor-textarea" id="field-content" name="content" spellcheck="false"></textarea>
+<textarea class="editor-textarea" id="field-content" name="content" spellcheck="false" placeholder="开始写..."></textarea>
 <small class="field-error"></small>
 </label>
 </div>
 </form>
 </section>
-<aside class="preview-panel" aria-label="预览">
-<div class="preview-head">
+<details class="preview-panel" aria-label="预览">
+<summary class="preview-head">
 <h2>预览</h2>
 <span class="state-pill" id="dirty-state">clean</span>
-</div>
+</summary>
 <p class="preview-summary" id="preview-summary"></p>
 <div class="preview-body">
 <h1 class="preview-title" id="preview-title"></h1>
 <div class="note-rendered" id="preview-content"></div>
 </div>
-</aside>
+</details>
 <details class="connection-panel">
 <summary>GitHub</summary>
 <div class="token-grid">

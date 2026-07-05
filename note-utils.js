@@ -35,7 +35,7 @@ function normalizeNotesData(payload) {
 
 function normalizeNote(note = {}) {
   const now = new Date().toISOString();
-  const title = String(note.title || "未命名笔记").trim();
+  const title = String(note.title || "无标题").trim();
   return {
     id: String(note.id || makeId()),
     title,

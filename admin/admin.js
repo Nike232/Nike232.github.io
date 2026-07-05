@@ -118,7 +118,7 @@ function createNote() {
   const now = new Date().toISOString();
   const note = normalizeNote({
     id: makeId(),
-    title: "未命名笔记",
+    title: "无标题",
     slug: `note-${Date.now().toString(36)}`,
     tags: [],
     status: "draft",
@@ -200,7 +200,7 @@ function renderList() {
     return `
       <button class="note-row${active}" type="button" data-id="${escapeHtml(note.id)}">
         <span class="note-row-title">
-          <span>${escapeHtml(note.title || "未命名笔记")}</span>
+          <span>${escapeHtml(note.title || "无标题")}</span>
           <span class="state-pill">${escapeHtml(note.status)}</span>
         </span>
         <span class="note-row-meta">${formatDate(note.updatedAt)}</span>
@@ -255,7 +255,7 @@ function renderEditor() {
 }
 
 function renderPreview(note) {
-  elements.previewTitle.textContent = note.title || "未命名笔记";
+  elements.previewTitle.textContent = note.title || "无标题";
   elements.previewSummary.textContent = note.summary || "";
   elements.previewContent.innerHTML = markdownToHtml(contentWithoutTitleHeading(note) || " ");
 }
@@ -301,7 +301,7 @@ function markDirty(message) {
 
 function setStatus(message, isError = false) {
   elements.status.textContent = message;
-  elements.status.style.color = isError ? "var(--note-danger)" : "var(--third-text-color)";
+  elements.status.style.color = isError ? "var(--note-red)" : "var(--note-muted)";
 }
 
 function setBusy(value) {
