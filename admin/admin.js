@@ -269,10 +269,11 @@ function positionVimBlockCursor() {
     return;
   }
 
+  const barHeight = Math.max(1.5, Math.min(2.5, charRect.height * 0.08));
   marker.style.left = `${charRect.left - wrapperRect.left}px`;
-  marker.style.top = `${charRect.top - wrapperRect.top}px`;
+  marker.style.top = `${charRect.bottom - wrapperRect.top - barHeight}px`;
   marker.style.width = `${charRect.width}px`;
-  marker.style.height = `${charRect.height}px`;
+  marker.style.height = `${barHeight}px`;
   marker.hidden = false;
 }
 
