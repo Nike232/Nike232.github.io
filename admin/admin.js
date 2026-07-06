@@ -113,7 +113,7 @@ async function startWorkspace() {
 }
 
 function bindAuthEvents() {
-  elements.authLogin.addEventListener("click", startGithubLogin);
+  elements.authLogin.addEventListener("click", startOwnerVerify);
   elements.authApiBase.addEventListener("change", saveApiBaseFromAuth);
   elements.authClear.addEventListener("click", clearAdminCredentials);
 }
@@ -147,15 +147,15 @@ async function checkSession() {
   } catch (error) {
     state.authUser = null;
     const params = new URLSearchParams(window.location.search);
-    const oauthError = params.get("admin_error");
-    renderAuthState("locked", oauthError ? `登录失败：${oauthError}` : "未登录时不会加载笔记编辑器。", Boolean(oauthError));
+    const verifyError = params.get("admin_error");
+    renderAuthState("locked", verifyError ? `登录失败：${verifyError}` : "未登录时不会加载笔记编辑器。", Boolean(verifyError));
   }
 }
 
-function startGithubLogin() {
+function startOwnerVerify() {
   saveApiBaseFromAuth();
   const returnTo = window.location.origin + window.location.pathname;
-  window.location.href = `${apiUrl("/api/auth/github")}?returnTo=${encodeURIComponent(returnTo)}`;
+  window.location.href = `${apiUrl("/api/owner/start")}?returnTo=${encodeURIComponent(returnTo)}`;
 }
 
 function saveApiBaseFromAuth() {
