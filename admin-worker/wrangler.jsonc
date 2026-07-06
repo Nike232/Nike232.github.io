@@ -1,0 +1,14 @@
+{
+  "name": "tomfng-blog-admin",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-07-01",
+  "vars": {
+    "ADMIN_LOGIN": "Nike232",
+    "GITHUB_OWNER": "Nike232",
+    "GITHUB_REPO": "Nike232.github.io",
+    "GITHUB_BRANCH": "source",
+    "POST_DIR": "source/_posts",
+    "TIME_ZONE": "Asia/Shanghai",
+    "ALLOWED_ORIGINS": "https://tomfng.space,http://tomfng.space,https://tomfngblog.me,http://localhost:4001,http://[::1]:4001"
+  }
+}

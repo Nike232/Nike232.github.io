@@ -1,0 +1,4 @@
+GITHUB_CLIENT_ID="your-github-oauth-client-id"
+GITHUB_CLIENT_SECRET="your-github-oauth-client-secret"
+GITHUB_TOKEN="github-token-with-contents-read-write"
+SESSION_SECRET="replace-with-a-long-random-string"

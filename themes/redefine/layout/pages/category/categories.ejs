@@ -1,0 +1,27 @@
+<% const categoryCount = site.categories ? site.categories.length : 0; %>
+<% const postCount = site.posts ? site.posts.length : 0; %>
+<div class="library-page category-page">
+	<header class="library-page-head">
+		<div>
+			<span class="library-page-kicker">Categories</span>
+			<h1>分类</h1>
+			<p>把文章按主题整理起来，写作方向会在这里慢慢长出清晰的轮廓。</p>
+		</div>
+		<span class="library-page-count"><%= categoryCount %> 个分类 / <%= postCount %> 篇文章</span>
+	</header>
+	<div class="category-list-content">
+		<% if (!categoryCount) { %>
+		<div class="library-empty-state category-empty-state">
+			<i class="fa-regular fa-folder-open"></i>
+			<h2>暂无分类</h2>
+			<p>发布带分类的文章后，这里会自动生成分类索引。</p>
+		</div>
+		<% } else { %>
+		<%- list_categories(site.categories, { class: 'all-category', depth: 5, style: 'list' }) %>
+		<% } %>
+	</div>
+	<div class="category-comments">
+		<% if (page.comment) { %> <%- partial('components/comments/comment') %>
+		<% } %>
+	</div>
+</div>

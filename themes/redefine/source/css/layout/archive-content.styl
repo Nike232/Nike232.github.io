@@ -1,0 +1,225 @@
+@require '../common/variables'
+
+body:has(.library-page)
+  background #ffffff !important
+
+.page-container:has(.library-page)
+  --background-color #ffffff
+  --background-color-transparent rgba(255, 255, 255, 0.86)
+  --second-background-color #fbfbfa
+  --third-background-color #f7f7f5
+  --default-text-color #37352f
+  --second-text-color #37352f
+  --third-text-color #787774
+  --fourth-text-color #eeeeec
+  --border-color #eeeeec
+  --shadow-color-1 rgba(55, 53, 47, 0.08)
+  --shadow-color-2 rgba(55, 53, 47, 0.05)
+  background #ffffff !important
+  color #37352f
+
+  .main-content-container,
+  .main-content-body,
+  .main-content,
+  .page-template-content
+    background #ffffff !important
+
+  .navbar-container
+    border-bottom 1px solid #eeeeec
+    background rgba(255, 255, 255, 0.92) !important
+    backdrop-filter blur(14px)
+
+  .navbar-content,
+  .navbar-content a,
+  .navbar-content i,
+  .navbar-content .logo-title
+    color #37352f !important
+
+  .navbar-container .right .desktop .navbar-list .navbar-item a::after,
+  .navbar-container .right .desktop .navbar-list .navbar-item .active::after
+    background #d9734f !important
+
+  .footer
+    border-top 1px solid #eeeeec !important
+    background #ffffff !important
+    color #787774 !important
+
+    a,
+    span,
+    p
+      color inherit
+
+  .right-bottom-tools
+    border 1px solid #eeeeec
+    color #37352f
+    background rgba(255, 255, 255, 0.92)
+    box-shadow 0 8px 24px rgba(55, 53, 47, 0.08)
+
+.page-template-container:has(.library-page)
+  padding 0
+  overflow hidden
+  border 1px solid #eeeeec
+  border-radius 8px
+  background #ffffff
+  box-shadow none
+
+  &:hover
+    box-shadow none
+
+.page-template-content:has(.library-page)
+  color #37352f
+
+  > h1:first-child
+    display none
+
+.library-page
+  --library-bg #ffffff
+  --library-surface #fbfbfa
+  --library-surface-hover #f7f7f5
+  --library-line #eeeeec
+  --library-line-strong #dfdfdc
+  --library-text #37352f
+  --library-muted #787774
+  --library-faint #aaa9a5
+  --library-accent #d9734f
+  min-height 560px
+  background var(--library-bg)
+  color var(--library-text)
+  font-family "Geist Variable", "MiSans", "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif
+
+.library-page-head
+  display flex
+  align-items flex-end
+  justify-content space-between
+  gap 24px
+  padding clamp(34px, 6vw, 64px) clamp(24px, 7vw, 72px) 28px
+  border-bottom 1px solid var(--library-line)
+  background linear-gradient(180deg, #fffdf9 0%, #ffffff 68%)
+
+  h1
+    margin 0 0 12px !important
+    border 0 !important
+    color var(--library-text) !important
+    font-size clamp(2.35rem, 5vw, 4.25rem) !important
+    font-weight 650 !important
+    letter-spacing 0 !important
+    line-height 1.02 !important
+    text-wrap balance
+
+    i
+      margin-right 12px
+      color var(--library-accent)
+      font-size 0.64em
+      vertical-align 0.08em
+
+  p
+    max-width 42rem
+    margin 0 !important
+    color var(--library-muted)
+    font-size 0.98rem
+    line-height 1.75
+
+.library-page-kicker
+  display inline-flex
+  align-items center
+  margin-bottom 10px
+  color var(--library-accent)
+  font-size 0.72rem
+  font-weight 650
+  letter-spacing 0
+  text-transform uppercase
+
+.library-page-count
+  flex 0 0 auto
+  display inline-flex
+  align-items center
+  min-height 30px
+  padding 0 10px
+  border 1px solid var(--library-line)
+  border-radius 6px
+  color var(--library-muted)
+  background var(--library-surface)
+  font-size 0.82rem
+  font-variant-numeric tabular-nums
+  white-space nowrap
+
+.archive-container,
+.category-list-content,
+.category-post-list
+  padding clamp(24px, 5vw, 54px) clamp(24px, 7vw, 72px) clamp(44px, 7vw, 78px)
+  background var(--library-bg)
+
+.library-empty-state
+  display grid
+  justify-items start
+  gap 12px
+  max-width 620px
+  padding 26px
+  border 1px solid var(--library-line)
+  border-radius 8px
+  background var(--library-surface)
+
+  i
+    color var(--library-accent)
+    font-size 1.1rem
+
+  h2
+    margin 0 !important
+    color var(--library-text) !important
+    font-size 1.28rem !important
+    font-weight 620 !important
+    line-height 1.35 !important
+    letter-spacing 0 !important
+
+  p
+    max-width 34rem
+    margin 0 !important
+    color var(--library-muted)
+    line-height 1.7
+
+  a
+    display inline-flex
+    align-items center
+    min-height 34px
+    margin-top 4px
+    padding 0 12px
+    border 1px solid var(--library-line-strong)
+    border-radius 6px
+    color var(--library-text)
+    background #ffffff
+    font-size 0.86rem
+    font-weight 520
+    text-decoration none
+    transition background-color 140ms ease, border-color 140ms ease, transform 140ms ease
+
+    &:hover
+      border-color #d7d7d3
+      background var(--library-surface-hover)
+
+    &:active
+      transform translateY(1px) scale(0.99)
+
++redefine-mobile()
+  .page-template-container:has(.library-page)
+    border-right 0
+    border-left 0
+    border-radius 0
+
+  .library-page
+    min-height 500px
+
+  .library-page-head
+    display grid
+    align-items start
+    padding 30px 20px 22px
+
+  .library-page-count
+    width fit-content
+
+  .archive-container,
+  .category-list-content,
+  .category-post-list
+    padding 22px 20px 42px
+
+  .library-empty-state
+    padding 20px

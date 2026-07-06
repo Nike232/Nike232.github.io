@@ -1,0 +1,22 @@
+<% const postCount = site.posts ? site.posts.length : 0; %>
+<div class="library-page archive-page">
+	<header class="library-page-head">
+		<div>
+			<span class="library-page-kicker">Archive</span>
+			<h1>归档</h1>
+			<p>按时间收拢所有博客文章，新的文章发布后会自动进入这条时间线。</p>
+		</div>
+		<span class="library-page-count"><%= postCount %> 篇文章</span>
+	</header>
+	<div class="archive-container">
+		<% if (!postCount) { %>
+		<div class="library-empty-state archive-empty-state">
+			<i class="fa-regular fa-file-lines"></i>
+			<h2>暂无归档</h2>
+			<p>发布第一篇博客文章后，这里会按照年份和日期展示你的时间线。</p>
+		</div>
+		<% } else { %>
+		<%- partial('utils/posts-list', {posts: site.posts}) %>
+		<% } %>
+	</div>
+</div>

@@ -1,0 +1,103 @@
+@require '../../common/variables'
+
+.archive-list-container
+  max-width 840px
+
+  .archive-item
+    margin-bottom 42px
+
+    &:last-child
+      margin-bottom 0
+
+  .archive-item-header
+    margin-bottom 14px
+
+  .archive-year
+    color var(--library-text, var(--second-text-color))
+    font-size clamp(1.8rem, 4vw, 2.65rem)
+    font-weight 650
+    letter-spacing 0
+    line-height 1
+
+  .archive-year-post-count
+    border-color var(--library-line, var(--border-color)) !important
+    border-radius 6px !important
+    color var(--library-muted, var(--third-text-color))
+    background var(--library-surface, var(--third-background-color)) !important
+    font-weight 600
+    font-variant-numeric tabular-nums
+
+  .article-list
+    margin 0
+    padding-left 18px !important
+    font-size 1rem
+    line-height 1.6
+
+  .article-item
+    min-height 92px
+    padding 34px 0 12px 30px !important
+    border-left 1px solid var(--library-line-strong, var(--border-color)) !important
+
+    &::before
+      content attr(date-is)
+      position absolute
+      left 30px
+      top 10px
+      display block
+      color var(--library-faint, var(--third-text-color))
+      font-size 0.75rem
+      font-weight 600
+      font-variant-numeric tabular-nums
+
+    &::after
+      content ''
+      position absolute
+      top 16px
+      left -5px
+      display block
+      width 9px
+      height 9px
+      border 2px solid #ffffff
+      border-radius 50%
+      background var(--library-accent, var(--primary-color))
+      box-shadow 0 0 0 1px rgba(217, 115, 79, 0.22)
+      transition background 0.2s ease-in-out
+
+    &:last-child
+      border-image var(--archive-timeline-last-child-color)
+
+    span.article-title
+      position relative
+      display block
+      width fit-content
+      max-width 100%
+      margin 0 0 8px !important
+      color var(--library-text, var(--default-text-color))
+      font-size clamp(1.06rem, 2vw, 1.32rem) !important
+      font-weight 560
+      line-height 1.45
+      text-wrap balance
+      transition color 140ms ease, transform 140ms ease
+
+      &::after
+        display none
+
+    a
+      text-decoration none
+
+      &:hover
+        span.article-title
+          color var(--library-accent, var(--primary-color))
+          transform translateX(2px)
+
+      &:active
+        span.article-title
+          transform translateX(2px) translateY(1px)
+
++redefine-mobile()
+  .archive-list-container
+    .article-list
+      padding-left 8px !important
+
+    .article-item
+      padding-left 22px !important

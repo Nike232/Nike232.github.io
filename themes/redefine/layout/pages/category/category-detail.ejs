@@ -1,0 +1,22 @@
+<% const postCount = page.posts ? page.posts.length : 0; %>
+<div class="library-page category-detail-page">
+    <header class="library-page-head">
+        <div>
+            <span class="library-page-kicker">Category</span>
+            <h1><i class="fa-regular fa-folder"></i><%= page.category %></h1>
+            <p>这个分类下的文章会按照发布时间排列。</p>
+        </div>
+        <span class="library-page-count"><%= postCount %> 篇文章</span>
+    </header>
+    <div class="category-post-list">
+        <% if (!postCount) { %>
+        <div class="library-empty-state">
+            <i class="fa-regular fa-file-lines"></i>
+            <h2>这个分类还没有文章</h2>
+            <p>发布文章并选择这个分类后，它会出现在这里。</p>
+        </div>
+        <% } else { %>
+        <%- partial('utils/posts-list', {posts: page.posts}) %>
+        <% } %>
+    </div>
+</div>

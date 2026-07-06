@@ -1,0 +1,110 @@
+@require '../common/variables'
+
+.category-header
+  margin 6px 0 36px 0
+  padding 0
+  color var(--second-text-color)
+  font-size 3.2rem
+  font-weight bold
+  line-height 1
+
+.category-list-content
+  .all-category-list
+    display grid
+    grid-template-columns repeat(2, minmax(0, 1fr))
+    gap 12px
+    margin 0
+    padding 0
+    list-style none
+
+    &>.all-category-list-item
+      min-width 0
+      padding 18px
+      border 1px solid var(--library-line, var(--border-color))
+      border-radius 8px
+      background var(--library-surface, var(--second-background-color))
+      cursor pointer
+      overflow hidden
+      transition background-color 150ms ease, border-color 150ms ease, transform 150ms ease
+
+      &:hover
+        border-color #ddddda
+        background #ffffff
+
+        &>.all-category-list-link
+          color var(--library-accent, var(--primary-color))
+
+      &:active
+        transform translateY(1px) scale(0.99)
+
+      &>.all-category-list-link
+        display inline-flex
+        align-items center
+        max-width 100%
+        color var(--library-text, var(--default-text-color))
+        font-size 1.08rem
+        font-weight 620
+        line-height 1.35
+        text-decoration none
+        transition color 150ms ease
+
+        &::before
+          content "\f07b"
+          margin-right 9px
+          color var(--library-accent, var(--primary-color))
+          font-family "Font Awesome 6 Free"
+          font-size 0.88rem
+          font-weight 400
+
+      span.all-category-list-count
+        display inline-flex
+        align-items center
+        min-height 22px
+        margin-left 8px
+        padding 0 7px
+        border 1px solid var(--library-line, var(--border-color))
+        border-radius 6px
+        color var(--library-muted, var(--third-text-color))
+        background #ffffff
+        font-size 0.74rem
+        font-weight 600
+        font-variant-numeric tabular-nums
+
+      .all-category-list-child
+        margin 0
+        padding-left 16px
+        border-left 1px solid var(--library-line-strong, var(--border-color))
+        list-style none
+        overflow hidden
+        transition max-height 180ms ease, margin-top 180ms ease
+
+        li
+          margin-bottom 10px
+
+          &:last-child
+            margin-bottom 0
+
+          &::before
+            content ''
+
+        .all-category-list-link
+          color var(--library-muted, var(--third-text-color))
+          font-size 0.95rem
+          font-weight 520
+          text-decoration none
+
+          &:hover
+            color var(--library-accent, var(--primary-color))
+
++redefine-tablet()
+  .category-list-content
+    .all-category-list
+      grid-template-columns 1fr
+
++redefine-mobile()
+  .category-list-content
+    .all-category-list
+      gap 10px
+
+      &>.all-category-list-item
+        padding 15px
