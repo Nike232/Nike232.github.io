@@ -41,6 +41,7 @@ const state = {
   vimCursorMode: "normal",
   vimBlockCursor: null,
   typingPulse: null,
+  typingTimer: null,
   syncingEditor: false
 };
 
@@ -149,7 +150,7 @@ function initMarkdownEditor() {
     keyMap: requestedKeyMap === "vim" ? "vim" : defaultKeyMap,
     lineWrapping: true,
     lineNumbers: false,
-    styleActiveLine: false,
+    styleActiveLine: true,
     autoCloseBrackets: true,
     matchBrackets: true,
     indentUnit: 2,
@@ -200,13 +201,29 @@ function initMarkdownEditor() {
     updateEditorStats();
     syncEditorCursorStyle();
   });
+  state.editor.on("focus", () => setEditorFocusState(true));
+  state.editor.on("blur", () => setEditorFocusState(false));
   state.editor.on("vim-mode-change", (_cm, event) => {
     state.vimCursorMode = event?.mode || "normal";
     syncEditorCursorStyle();
   });
   state.editor.on("scroll", syncEditorCursorStyle);
   syncEditorCursorStyle();
+  setEditorFocusState(state.editor.hasFocus?.());
   updateEditorStats();
+}
+
+function getEditorField() {
+  return state.editor?.getWrapperElement?.()?.closest(".editor-field") || null;
+}
+
+function setEditorFocusState(focused) {
+  const field = getEditorField();
+  if (!field) return;
+  field.classList.toggle("is-editor-focused", Boolean(focused));
+  if (!focused) {
+    field.classList.remove("is-editor-typing");
+  }
 }
 
 function syncEditorCursorStyle() {
@@ -293,6 +310,15 @@ function triggerTypingPulse(change) {
     pulse.classList.remove("is-active");
     void pulse.offsetWidth;
     pulse.classList.add("is-active");
+
+    const field = getEditorField();
+    if (field) {
+      field.classList.add("is-editor-typing");
+      window.clearTimeout(state.typingTimer);
+      state.typingTimer = window.setTimeout(() => {
+        field.classList.remove("is-editor-typing");
+      }, 720);
+    }
   });
 }
 
