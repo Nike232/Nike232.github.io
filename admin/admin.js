@@ -22,7 +22,8 @@ const CONFIG_KEY = "tomfng-notes-github-config";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const OWNER_LOGIN = "Nike232";
 const DEFAULT_CONFIG = {
-  apiBase: ""
+  apiBase: "",
+  sessionToken: ""
 };
 
 const state = {
@@ -92,6 +93,7 @@ init();
 
 async function init() {
   bindAuthEvents();
+  captureSessionFromUrl();
   hydrateConfigForm();
   await checkSession();
 }
@@ -152,10 +154,17 @@ async function checkSession() {
   }
 }
 
-function startOwnerVerify() {
+async function startOwnerVerify() {
   saveApiBaseFromAuth();
+  renderAuthState("checking", "正在连接发布服务...");
+  try {
+    await apiFetch("/api/session");
+  } catch (error) {
+    renderAuthState("locked", serviceMissingMessage(error), true);
+    return;
+  }
   const returnTo = window.location.origin + window.location.pathname;
-  window.location.href = `${apiUrl("/api/owner/start")}?returnTo=${encodeURIComponent(returnTo)}`;
+  window.location.href = `${apiUrl("/api/owner/start")}?returnTo=${encodeURIComponent(returnTo)}&session=token`;
 }
 
 function saveApiBaseFromAuth() {
@@ -181,7 +190,7 @@ function renderAuthState(nextState, message, isError = false) {
 
 function clearAdminCredentials() {
   state.authUser = null;
-  state.config = normalizeConfig({ ...state.config, apiBase: "" });
+  state.config = normalizeConfig({ ...state.config, apiBase: "", sessionToken: "" });
   persistConfig();
   localStorage.removeItem(EDITOR_MODE_KEY);
   hydrateConfigForm();
@@ -919,6 +928,7 @@ function hydrateConfigForm() {
 function saveConfig() {
   if (!requireOwnerAccess()) return;
   state.config = {
+    ...state.config,
     apiBase: elements.configApiBase.value.trim()
   };
   persistConfig();
@@ -942,6 +952,7 @@ function loadConfig() {
 function normalizeConfig(config) {
   const next = { ...DEFAULT_CONFIG, ...(config || {}) };
   next.apiBase = normalizeApiBase(next.apiBase);
+  next.sessionToken = String(next.sessionToken || "");
   return next;
 }
 
@@ -962,6 +973,9 @@ async function apiFetch(path, options = {}) {
     Accept: "application/json",
     ...(options.headers || {})
   };
+  if (state.config.sessionToken && !headers.Authorization) {
+    headers.Authorization = `Bearer ${state.config.sessionToken}`;
+  }
   if (options.body && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
@@ -983,6 +997,23 @@ async function apiFetch(path, options = {}) {
   return payload;
 }
 
+function captureSessionFromUrl() {
+  const hash = new URLSearchParams(String(window.location.hash || "").replace(/^#/, ""));
+  const token = hash.get("admin_session");
+  if (!token) return;
+  state.config = normalizeConfig({ ...state.config, sessionToken: token });
+  persistConfig();
+  history.replaceState(null, "", window.location.pathname + window.location.search);
+}
+
+function serviceMissingMessage(error) {
+  const message = String(error?.message || "");
+  if (message.includes("Failed to fetch") || message.includes("<!DOCTYPE") || message.includes("404") || message.includes("非 JSON")) {
+    return "发布服务还没接通：请填入 Worker 地址，或把 /api/* 路由到 Worker。";
+  }
+  return `发布服务连接失败：${message}`;
+}
+
 async function logoutAdmin() {
   setBusy(true);
   try {
@@ -991,6 +1022,8 @@ async function logoutAdmin() {
     // Even if the remote session is already gone, clear this browser state.
   } finally {
     state.authUser = null;
+    state.config = normalizeConfig({ ...state.config, sessionToken: "" });
+    persistConfig();
     setBusy(false);
     renderAuthState("locked", "已退出管理区。");
     window.location.reload();
