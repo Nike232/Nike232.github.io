@@ -511,12 +511,32 @@
 .editor-field .note-vim-block-cursor-marker {
   position: absolute;
   z-index: 4;
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
-  border-radius: 999px;
-  background: rgba(47, 45, 41, 0.58);
-  box-shadow: 0 1px 1px rgba(47, 45, 41, 0.08);
+  overflow: hidden;
+  border: 0;
+  border-radius: 1.5px;
+  color: #fffaf2;
+  background: rgba(55, 53, 47, 0.84);
+  box-shadow: none;
   mix-blend-mode: normal;
+  text-align: center;
+  text-rendering: geometricPrecision;
+  animation: note-vim-cursor-blink 1.05s steps(1, end) infinite;
+}
+
+@keyframes note-vim-cursor-blink {
+  0%,
+  62% {
+    opacity: 1;
+  }
+
+  63%,
+  100% {
+    opacity: 0.18;
+  }
 }
 
 .editor-field .note-vim-block-cursor-marker[hidden] {

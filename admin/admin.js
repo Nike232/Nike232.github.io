@@ -262,22 +262,36 @@ function positionVimBlockCursor() {
   const marker = ensureVimBlockCursor();
   if (!wrapper || !marker || !wrapper.classList.contains("note-vim-block-cursor")) return;
 
-  const charRect = getRenderedVimCharRect() || getMeasuredVimCharRect();
+  const target = getRenderedVimCharTarget() || getMeasuredVimCharTarget();
+  const charRect = target?.rect;
   const wrapperRect = wrapper.getBoundingClientRect();
   if (!charRect || !charRect.height || !charRect.width) {
     setVimBlockCursorVisible(false);
     return;
   }
 
-  const barHeight = Math.max(1.5, Math.min(2.5, charRect.height * 0.08));
+  marker.textContent = target.text === " " ? "" : target.text || "";
+  syncVimCursorTypography(marker, target.element, charRect);
   marker.style.left = `${charRect.left - wrapperRect.left}px`;
-  marker.style.top = `${charRect.bottom - wrapperRect.top - barHeight}px`;
+  marker.style.top = `${charRect.top - wrapperRect.top}px`;
   marker.style.width = `${charRect.width}px`;
-  marker.style.height = `${barHeight}px`;
+  marker.style.height = `${charRect.height}px`;
   marker.hidden = false;
 }
 
-function getRenderedVimCharRect() {
+function syncVimCursorTypography(marker, sourceElement, charRect) {
+  const fallback = state.editor?.getWrapperElement?.();
+  const style = getComputedStyle(sourceElement || fallback);
+  marker.style.fontFamily = style.fontFamily;
+  marker.style.fontSize = style.fontSize;
+  marker.style.fontStyle = style.fontStyle;
+  marker.style.fontWeight = style.fontWeight;
+  marker.style.letterSpacing = style.letterSpacing;
+  marker.style.textTransform = style.textTransform;
+  marker.style.lineHeight = `${charRect.height}px`;
+}
+
+function getRenderedVimCharTarget() {
   const position = state.editor.getCursor();
   const line = state.editor.getLine(position.line) || "";
   if (!line.length) return null;
@@ -287,13 +301,13 @@ function getRenderedVimCharRect() {
 
   const startIndex = Math.min(position.ch, line.length - 1);
   for (const charIndex of nearbyIndexes(startIndex, line.length)) {
-    const rect = getTextRangeRect(lineNode, charIndex);
-    if (isUsableVimRect(rect)) return rect;
+    const target = getTextRangeTarget(lineNode, charIndex);
+    if (target && isUsableVimRect(target.rect)) return target;
   }
   return null;
 }
 
-function getMeasuredVimCharRect() {
+function getMeasuredVimCharTarget() {
   const position = state.editor.getCursor();
   const line = state.editor.getLine(position.line) || "";
   const ch = Math.min(position.ch, Math.max(line.length - 1, 0));
@@ -301,12 +315,16 @@ function getMeasuredVimCharRect() {
   const to = state.editor.charCoords({ line: position.line, ch: ch + 1 }, "window");
   const width = Math.max(7, Math.abs((to.left || to.right) - from.left) || state.editor.defaultCharWidth?.() || 8);
   return {
-    left: from.left,
-    right: from.left + width,
-    top: from.top,
-    bottom: from.bottom,
-    width,
-    height: Math.max(2, from.bottom - from.top)
+    rect: {
+      left: from.left,
+      right: from.left + width,
+      top: from.top,
+      bottom: from.bottom,
+      width,
+      height: Math.max(2, from.bottom - from.top)
+    },
+    text: line[ch] || "",
+    element: getRenderedLineNode(position.line) || state.editor.getWrapperElement?.()
   };
 }
 
@@ -337,7 +355,7 @@ function nearbyIndexes(startIndex, length) {
   return indexes;
 }
 
-function getTextRangeRect(root, charIndex) {
+function getTextRangeTarget(root, charIndex) {
   const match = findTextNodeAt(root, charIndex);
   if (!match) return null;
 
@@ -346,7 +364,18 @@ function getTextRangeRect(root, charIndex) {
   range.setEnd(match.node, Math.min(match.offset + 1, match.node.nodeValue.length));
   const rect = [...range.getClientRects()].find(isUsableVimRect) || range.getBoundingClientRect();
   range.detach?.();
-  return rect;
+  return {
+    rect: {
+      left: rect.left,
+      right: rect.right,
+      top: rect.top,
+      bottom: rect.bottom,
+      width: rect.width,
+      height: rect.height
+    },
+    text: match.node.nodeValue.slice(match.offset, match.offset + 1),
+    element: match.node.parentElement || root
+  };
 }
 
 function findTextNodeAt(root, charIndex) {
