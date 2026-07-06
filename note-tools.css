@@ -474,20 +474,31 @@
 
 .editor-field .cm-fat-cursor .CodeMirror-cursor,
 .editor-field .note-vim-thin-cursor .CodeMirror-cursor {
-  width: 0 !important;
-  min-width: 0 !important;
-  max-width: 0 !important;
-  height: 1.48em !important;
-  margin-top: 0.26em;
+  width: 1.15px !important;
+  min-width: 1.15px !important;
+  max-width: 1.15px !important;
+  height: 1.24em !important;
+  margin-top: 0.62em;
   padding: 0 !important;
   border: 0 !important;
-  border-left: 1.5px solid var(--note-text) !important;
-  border-radius: 0;
+  border-radius: 999px;
   overflow: hidden !important;
   color: transparent;
-  background: transparent !important;
+  background: rgba(47, 45, 41, 0.74) !important;
   box-shadow: none !important;
-  animation: none !important;
+  animation: note-vim-insert-caret-blink 1.08s steps(1, end) infinite !important;
+}
+
+@keyframes note-vim-insert-caret-blink {
+  0%,
+  58% {
+    opacity: 1;
+  }
+
+  59%,
+  100% {
+    opacity: 0.18;
+  }
 }
 
 .editor-field .note-vim-block-cursor .CodeMirror-cursor {
