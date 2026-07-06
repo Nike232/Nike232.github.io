@@ -40,6 +40,7 @@ const state = {
   editorMode: localStorage.getItem(EDITOR_MODE_KEY) === "vim" ? "vim" : "default",
   vimCursorMode: "normal",
   vimBlockCursor: null,
+  typingPulse: null,
   syncingEditor: false
 };
 
@@ -188,11 +189,12 @@ function initMarkdownEditor() {
     ? window.HyperMD.fromTextArea(fields.content, editorOptions)
     : window.CodeMirror.fromTextArea(fields.content, editorOptions);
 
-  state.editor.on("change", () => {
+  state.editor.on("change", (_cm, change) => {
     if (state.syncingEditor) return;
     fields.content.value = state.editor.getValue();
     updateSelectedFromFields();
     updateEditorStats();
+    triggerTypingPulse(change);
   });
   state.editor.on("cursorActivity", () => {
     updateEditorStats();
@@ -254,6 +256,44 @@ function setVimBlockCursorVisible(visible) {
   const marker = state.vimBlockCursor || ensureVimBlockCursor();
   if (!marker) return;
   marker.hidden = !visible;
+}
+
+function shouldShowTypingPulse(change) {
+  if (!state.editor?.hasFocus?.() || change?.origin === "setValue") return false;
+  if (state.editorMode !== "vim") return true;
+  const vim = state.editor.state?.vim;
+  return Boolean(vim?.insertMode || state.vimCursorMode === "insert" || state.vimCursorMode === "replace");
+}
+
+function ensureTypingPulse() {
+  if (state.typingPulse?.isConnected) return state.typingPulse;
+  const wrapper = state.editor?.getWrapperElement?.();
+  if (!wrapper) return null;
+  const pulse = document.createElement("span");
+  pulse.className = "note-typing-pulse";
+  pulse.setAttribute("aria-hidden", "true");
+  wrapper.appendChild(pulse);
+  state.typingPulse = pulse;
+  return pulse;
+}
+
+function triggerTypingPulse(change) {
+  if (!shouldShowTypingPulse(change)) return;
+  window.requestAnimationFrame?.(() => {
+    const pulse = ensureTypingPulse();
+    const wrapper = state.editor?.getWrapperElement?.();
+    const cursor = wrapper?.querySelector(".CodeMirror-cursor");
+    if (!pulse || !wrapper || !cursor) return;
+
+    const cursorRect = cursor.getBoundingClientRect();
+    const wrapperRect = wrapper.getBoundingClientRect();
+    pulse.style.left = `${cursorRect.left - wrapperRect.left}px`;
+    pulse.style.top = `${cursorRect.top - wrapperRect.top}px`;
+    pulse.style.height = `${cursorRect.height}px`;
+    pulse.classList.remove("is-active");
+    void pulse.offsetWidth;
+    pulse.classList.add("is-active");
+  });
 }
 
 function positionVimBlockCursor() {

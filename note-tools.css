@@ -472,7 +472,7 @@
   background: transparent !important;
 }
 
-.editor-field .cm-fat-cursor .CodeMirror-cursor,
+.editor-field .CodeMirror-focused:not(.note-vim-block-cursor) .CodeMirror-cursor,
 .editor-field .note-vim-thin-cursor .CodeMirror-cursor {
   width: 1.15px !important;
   min-width: 1.15px !important;
@@ -484,20 +484,38 @@
   border-radius: 999px;
   overflow: hidden !important;
   color: transparent;
-  background: rgba(47, 45, 41, 0.74) !important;
-  box-shadow: none !important;
-  animation: note-vim-insert-caret-blink 1.08s steps(1, end) infinite !important;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 138, 101, 0.42) 0%,
+      rgba(47, 45, 41, 0.82) 18%,
+      rgba(47, 45, 41, 0.82) 82%,
+      rgba(255, 138, 101, 0.34) 100%
+    ) !important;
+  box-shadow:
+    0 0 0 0.5px rgba(47, 45, 41, 0.08),
+    0 0 8px rgba(255, 138, 101, 0.16) !important;
+  transform-origin: center;
+  will-change: opacity, transform;
+  animation: note-vim-insert-caret-breathe 1.12s cubic-bezier(0.2, 0.8, 0.2, 1) infinite !important;
 }
 
-@keyframes note-vim-insert-caret-blink {
+@keyframes note-vim-insert-caret-breathe {
   0%,
-  58% {
-    opacity: 1;
+  100% {
+    opacity: 0.34;
+    transform: scaleY(0.96);
   }
 
-  59%,
-  100% {
-    opacity: 0.18;
+  16%,
+  58% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+
+  72% {
+    opacity: 0.46;
+    transform: scaleY(0.98);
   }
 }
 
@@ -530,28 +548,93 @@
   border: 0;
   border-radius: 1.5px;
   color: #fffaf2;
-  background: rgba(55, 53, 47, 0.84);
-  box-shadow: none;
+  background:
+    linear-gradient(180deg, rgba(67, 64, 56, 0.92), rgba(45, 43, 38, 0.86));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 250, 242, 0.08),
+    0 4px 14px rgba(47, 45, 41, 0.12);
   mix-blend-mode: normal;
   text-align: center;
   text-rendering: geometricPrecision;
-  animation: note-vim-cursor-blink 1.05s steps(1, end) infinite;
+  transform-origin: center;
+  will-change: opacity, transform;
+  animation: note-vim-cursor-breathe 1.12s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
 }
 
-@keyframes note-vim-cursor-blink {
+@keyframes note-vim-cursor-breathe {
   0%,
-  62% {
-    opacity: 1;
+  100% {
+    opacity: 0.36;
+    transform: scale(0.985);
   }
 
-  63%,
-  100% {
-    opacity: 0.18;
+  18%,
+  62% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  78% {
+    opacity: 0.48;
+    transform: scale(0.992);
   }
 }
 
 .editor-field .note-vim-block-cursor-marker[hidden] {
   display: none;
+}
+
+.editor-field .note-typing-pulse {
+  position: absolute;
+  z-index: 2;
+  width: 20px;
+  pointer-events: none;
+  border-radius: 999px;
+  opacity: 0;
+  background:
+    radial-gradient(
+      ellipse at 35% 50%,
+      rgba(255, 138, 101, 0.22),
+      rgba(47, 45, 41, 0.10) 44%,
+      rgba(47, 45, 41, 0) 72%
+    );
+  transform: translateX(-9px) scaleX(0.56);
+  transform-origin: center;
+  will-change: opacity, transform;
+}
+
+.editor-field .note-typing-pulse.is-active {
+  animation: note-typing-pulse 360ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes note-typing-pulse {
+  0% {
+    opacity: 0;
+    transform: translateX(-9px) scaleX(0.42);
+  }
+
+  28% {
+    opacity: 1;
+    transform: translateX(-9px) scaleX(1);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-9px) scaleX(1.72);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-field .CodeMirror-focused:not(.note-vim-block-cursor) .CodeMirror-cursor,
+  .editor-field .note-vim-thin-cursor .CodeMirror-cursor,
+  .editor-field .note-vim-block-cursor-marker,
+  .editor-field .note-typing-pulse.is-active {
+    animation: none !important;
+  }
+
+  .editor-field .note-typing-pulse {
+    display: none;
+  }
 }
 
 .editor-field .cm-animate-fat-cursor {
