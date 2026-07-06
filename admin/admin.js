@@ -20,11 +20,13 @@ const DATA_URL = "/notes-data.json";
 const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
+const DEFAULT_POST_DIR = "source/_posts";
+const REMOTE_NOTES_PATHS = ["source/notes-data.json", "notes-data.json"];
 const DEFAULT_CONFIG = {
   owner: "Nike232",
   repo: "Nike232.github.io",
   branch: "main",
-  path: "notes-data.json",
+  path: DEFAULT_POST_DIR,
   token: ""
 };
 
@@ -835,7 +837,7 @@ function saveConfig() {
     owner: elements.configOwner.value.trim() || DEFAULT_CONFIG.owner,
     repo: elements.configRepo.value.trim() || DEFAULT_CONFIG.repo,
     branch: elements.configBranch.value.trim() || DEFAULT_CONFIG.branch,
-    path: elements.configPath.value.trim() || DEFAULT_CONFIG.path
+    path: normalizePostDirectory(elements.configPath.value.trim() || DEFAULT_CONFIG.path)
   };
   localStorage.setItem(CONFIG_KEY, JSON.stringify(state.config));
   setStatus("GitHub 配置已保存");
@@ -844,10 +846,16 @@ function saveConfig() {
 function loadConfig() {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
-    return { ...DEFAULT_CONFIG, ...(raw ? JSON.parse(raw) : {}) };
+    return normalizeConfig({ ...DEFAULT_CONFIG, ...(raw ? JSON.parse(raw) : {}) });
   } catch {
-    return { ...DEFAULT_CONFIG };
+    return normalizeConfig({ ...DEFAULT_CONFIG });
   }
+}
+
+function normalizeConfig(config) {
+  const next = { ...DEFAULT_CONFIG, ...(config || {}) };
+  next.path = normalizePostDirectory(next.path);
+  return next;
 }
 
 async function pullRemote() {
@@ -858,13 +866,13 @@ async function pullRemote() {
   }
   setBusy(true);
   try {
-    const remote = await getRemoteFile();
+    const remote = await getRemoteNotesData();
     state.remoteSha = remote.sha;
     state.data = normalizeNotesData(remote.data);
     state.selectedId = state.data.notes[0]?.id || null;
     state.dirty = false;
     persistWorkspace(false);
-    setStatus("已拉取远程数据");
+    setStatus(`已拉取笔记库：${remote.path}`);
     render();
   } catch (error) {
     setStatus(`拉取失败：${error.message}`, true);
@@ -879,35 +887,42 @@ async function publishRemote() {
     setStatus("需要 GitHub Token", true);
     return;
   }
-  if (!validateSelected() && state.data.notes.length) return;
+  const note = getSelectedNote();
+  if (!note) {
+    setStatus("先选择一篇文章", true);
+    return;
+  }
+  if (!validateSelected()) return;
 
   setBusy(true);
   try {
-    let sha = state.remoteSha;
+    const publishedNote = normalizeNote({
+      ...note,
+      status: "published",
+      updatedAt: new Date().toISOString()
+    });
+    const postPath = postFilePath(publishedNote);
+    let sha = null;
     try {
-      const remote = await getRemoteFile();
+      const remote = await getRemoteFile(postPath);
       sha = remote.sha;
     } catch (error) {
       if (!String(error.message).includes("404")) throw error;
     }
 
-    const payload = serializeData();
-    const body = {
-      message: `Update notes data: ${new Date().toISOString()}`,
-      content: encodeBase64(JSON.stringify(payload, null, 2)),
-      branch: state.config.branch
-    };
-    if (sha) body.sha = sha;
-
-    const response = await githubFetch(fileApiUrl(), {
-      method: "PUT",
-      body: JSON.stringify(body)
-    });
-    state.remoteSha = response.content?.sha || sha;
-    state.data = normalizeNotesData(payload);
+    if (!(await branchLooksLikeHexoSource())) {
+      throw new Error(`目标分支 ${state.config.branch} 缺少 _config.yml，请选择 Hexo 源码分支后发布`);
+    }
+    await putRemoteFile(
+      postPath,
+      buildHexoPost(publishedNote),
+      `${sha ? "Update" : "Publish"} post: ${publishedNote.title}`,
+      sha
+    );
+    Object.assign(note, publishedNote);
     state.dirty = false;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    setStatus("已发布到 GitHub");
+    persistWorkspace(false);
+    setStatus(`已发布文章：${postPath}`);
     render();
   } catch (error) {
     setStatus(`发布失败：${error.message}`, true);
@@ -916,19 +931,121 @@ async function publishRemote() {
   }
 }
 
-async function getRemoteFile() {
-  const response = await githubFetch(`${fileApiUrl()}?ref=${encodeURIComponent(state.config.branch)}`);
-  return {
-    sha: response.sha,
-    data: JSON.parse(decodeBase64(response.content || ""))
-  };
+async function getRemoteNotesData() {
+  let lastError = null;
+  for (const path of REMOTE_NOTES_PATHS) {
+    try {
+      const remote = await getRemoteFile(path);
+      return {
+        path,
+        sha: remote.sha,
+        data: JSON.parse(decodeBase64(remote.content || ""))
+      };
+    } catch (error) {
+      lastError = error;
+      if (!String(error.message).includes("404")) throw error;
+    }
+  }
+  throw lastError || new Error("未找到远程笔记库");
 }
 
-function fileApiUrl() {
+async function branchLooksLikeHexoSource() {
+  try {
+    await getRemoteFile("_config.yml");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function getRemoteFile(path) {
+  return githubFetch(`${fileApiUrl(path)}?ref=${encodeURIComponent(state.config.branch)}`);
+}
+
+async function putRemoteFile(path, content, message, sha) {
+  const body = {
+    message,
+    content: encodeBase64(content),
+    branch: state.config.branch
+  };
+  if (sha) body.sha = sha;
+  return githubFetch(fileApiUrl(path), {
+    method: "PUT",
+    body: JSON.stringify(body)
+  });
+}
+
+function postFilePath(note) {
+  const dir = normalizePostDirectory(state.config.path);
+  const slug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
+  return dir ? `${dir}/${slug}.md` : `${slug}.md`;
+}
+
+function buildHexoPost(note) {
+  const category = normalizeCategory(note.category);
+  const tags = normalizeTags(note.tags);
+  const frontMatter = [
+    "---",
+    `title: ${yamlScalar(note.title || "无标题")}`,
+    `date: ${formatHexoDate(note.createdAt)}`,
+    `updated: ${formatHexoDate(note.updatedAt)}`,
+    `categories:`,
+    `  - ${yamlScalar(category)}`
+  ];
+  if (tags.length) {
+    frontMatter.push("tags:", ...tags.map((tag) => `  - ${yamlScalar(tag)}`));
+  }
+  if (note.summary) {
+    frontMatter.push(`description: ${yamlScalar(note.summary)}`);
+  }
+  frontMatter.push("---");
+  return `${frontMatter.join("\n")}\n\n${postBody(note)}\n`;
+}
+
+function postBody(note) {
+  return stripFrontMatter(contentWithoutTitleHeading(note)).trim();
+}
+
+function stripFrontMatter(markdown) {
+  return String(markdown || "").replace(/^---\s*\n[\s\S]*?\n---\s*(\n|$)/, "");
+}
+
+function normalizePostDirectory(path) {
+  const raw = String(path || DEFAULT_POST_DIR).trim().replace(/\\/g, "/");
+  if (!raw || raw === "notes-data.json" || raw === "source/notes-data.json") return DEFAULT_POST_DIR;
+  const withoutFile = /\.md$/i.test(raw) ? raw.replace(/\/?[^/]*\.md$/i, "") : raw;
+  return withoutFile.replace(/^\/+|\/+$/g, "") || DEFAULT_POST_DIR;
+}
+
+function normalizePostSlug(slug, title) {
+  const cleaned = String(slug || "")
+    .trim()
+    .replace(/\.md$/i, "")
+    .replace(/[\\/#?%*:|"<>]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || makeSlug(title || "post");
+}
+
+function yamlScalar(value) {
+  return JSON.stringify(String(value || ""));
+}
+
+function formatHexoDate(value) {
+  const date = new Date(value || Date.now());
+  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
+  const pad = (number) => String(number).padStart(2, "0");
+  return [
+    `${safeDate.getFullYear()}-${pad(safeDate.getMonth() + 1)}-${pad(safeDate.getDate())}`,
+    `${pad(safeDate.getHours())}:${pad(safeDate.getMinutes())}:${pad(safeDate.getSeconds())}`
+  ].join(" ");
+}
+
+function fileApiUrl(path) {
   const owner = encodeURIComponent(state.config.owner);
   const repo = encodeURIComponent(state.config.repo);
-  const path = state.config.path.split("/").map(encodeURIComponent).join("/");
-  return `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+  const remotePath = String(path || state.config.path).split("/").map(encodeURIComponent).join("/");
+  return `https://api.github.com/repos/${owner}/${repo}/contents/${remotePath}`;
 }
 
 async function githubFetch(url, options = {}) {
