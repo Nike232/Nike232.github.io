@@ -197,7 +197,7 @@ function hasOwnerAccess() {
 
 function requireOwnerAccess() {
   if (hasOwnerAccess()) return true;
-  renderAuthState("locked", "先用 GitHub 登录，再进入管理区。", true);
+  renderAuthState("locked", "先完成身份验证，再进入管理区。", true);
   return false;
 }
 
