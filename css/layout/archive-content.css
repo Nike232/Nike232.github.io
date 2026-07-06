@@ -139,6 +139,61 @@
   --redefine-box-shadow-flat-hover: var(--shadow-color-2) 0px 1px 4px 0px, var(--shadow-color-1) 0px 0px 0px 1px, var(--shadow-color-1) 0px 0px 0px 1px inset;
   --mermaid-theme: $dark-mermaid-theme;
 }
+body:has(.library-page) {
+  background: #fff !important;
+}
+.page-container:has(.library-page) {
+  --background-color: #fff;
+  --background-color-transparent: rgba(255,255,255,0.86);
+  --second-background-color: #fbfbfa;
+  --third-background-color: #f7f7f5;
+  --default-text-color: #37352f;
+  --second-text-color: #37352f;
+  --third-text-color: #787774;
+  --fourth-text-color: #eeeeec;
+  --border-color: #eeeeec;
+  --shadow-color-1: rgba(55,53,47,0.08);
+  --shadow-color-2: rgba(55,53,47,0.05);
+  background: #fff !important;
+  color: #37352f;
+}
+.page-container:has(.library-page) .main-content-container,
+.page-container:has(.library-page) .main-content-body,
+.page-container:has(.library-page) .main-content,
+.page-container:has(.library-page) .page-template-content {
+  background: #fff !important;
+}
+.page-container:has(.library-page) .navbar-container {
+  border-bottom: 1px solid #eeeeec;
+  background: rgba(255,255,255,0.92) !important;
+  backdrop-filter: blur(14px);
+}
+.page-container:has(.library-page) .navbar-content,
+.page-container:has(.library-page) .navbar-content a,
+.page-container:has(.library-page) .navbar-content i,
+.page-container:has(.library-page) .navbar-content .logo-title {
+  color: #37352f !important;
+}
+.page-container:has(.library-page) .navbar-container .right .desktop .navbar-list .navbar-item a::after,
+.page-container:has(.library-page) .navbar-container .right .desktop .navbar-list .navbar-item .active::after {
+  background: #d9734f !important;
+}
+.page-container:has(.library-page) .footer {
+  border-top: 1px solid #eeeeec !important;
+  background: #fff !important;
+  color: #787774 !important;
+}
+.page-container:has(.library-page) .footer a,
+.page-container:has(.library-page) .footer span,
+.page-container:has(.library-page) .footer p {
+  color: inherit;
+}
+.page-container:has(.library-page) .right-bottom-tools {
+  border: 1px solid #eeeeec;
+  color: #37352f;
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 8px 24px rgba(55,53,47,0.08);
+}
 .page-template-container:has(.library-page) {
   padding: 0;
   overflow: hidden;
