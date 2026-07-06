@@ -959,8 +959,23 @@ function normalizeConfig(config) {
 
 function normalizeApiBase(value) {
   const raw = String(value || "").trim().replace(/\/+$/g, "");
-  if (!raw) return "";
-  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  if (!raw) return DEFAULT_API_BASE;
+  const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(normalized);
+    const staleLocalBases = new Set([
+      "http://localhost:4001",
+      "http://127.0.0.1:4001",
+      "http://[::1]:4001",
+      "http://tomfng.space",
+      "https://tomfng.space",
+      "https://tomfngblog.me"
+    ]);
+    if (staleLocalBases.has(url.origin)) return DEFAULT_API_BASE;
+  } catch {
+    return DEFAULT_API_BASE;
+  }
+  return normalized;
 }
 
 function apiUrl(path) {
