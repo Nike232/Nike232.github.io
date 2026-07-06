@@ -929,8 +929,17 @@ function flushAutosave() {
   autoSaveWorkspace({ silent: true });
 }
 
-function setStatus(message, isError = false) {
-  elements.status.textContent = message;
+function setStatus(message, isError = false, linkUrl = "") {
+  elements.status.replaceChildren(document.createTextNode(message));
+  if (linkUrl) {
+    const link = document.createElement("a");
+    link.href = linkUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = "打开文章";
+    elements.status.append(" ");
+    elements.status.appendChild(link);
+  }
   elements.status.style.color = isError ? "var(--note-red)" : "var(--note-muted)";
 }
 
@@ -1142,13 +1151,42 @@ async function publishRemote() {
     Object.assign(note, publishedNote);
     state.dirty = false;
     persistWorkspace(false);
-    setStatus(`已发布文章：${remote.path || publishedNote.title}`);
     render();
+    if (remote.publicUrl) {
+      setStatus("已提交发布，正在生成网站...", false, remote.publicUrl);
+      const live = await waitForPublishedPage(remote.publicUrl, publishedNote.title);
+      setStatus(
+        live.ready ? "已上线" : "已提交发布，网站还在生成，稍后刷新就能看到",
+        false,
+        remote.publicUrl
+      );
+    } else {
+      setStatus(`已发布文章：${remote.path || publishedNote.title}`);
+    }
   } catch (error) {
     setStatus(`发布失败：${error.message}`, true);
   } finally {
     setBusy(false);
   }
+}
+
+async function waitForPublishedPage(publicUrl, title) {
+  const attempts = 24;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    await sleep(attempt === 1 ? 2500 : 5000);
+    try {
+      const status = await apiFetch(`/api/publish-status?url=${encodeURIComponent(publicUrl)}&title=${encodeURIComponent(title || "")}`);
+      if (status.ready) return status;
+      setStatus(`已提交发布，正在生成网站... ${attempt}/${attempts}`, false, publicUrl);
+    } catch {
+      setStatus(`已提交发布，正在等待网站响应... ${attempt}/${attempts}`, false, publicUrl);
+    }
+  }
+  return { ready: false, url: publicUrl };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function normalizePostSlug(slug, title) {

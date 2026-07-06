@@ -1562,9 +1562,20 @@
 .status-text {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   min-height: 32px;
   color: var(--note-muted);
   font-size: 0.84rem;
+}
+
+.status-text a {
+  color: var(--note-blue);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.status-text a:hover {
+  text-decoration: underline;
 }
 
 .sync-actions .solid-button {
