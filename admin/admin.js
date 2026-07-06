@@ -20,6 +20,8 @@ const DATA_URL = "/notes-data.json";
 const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
+const OWNER_LOGIN = "Nike232";
+const AUTH_USER_URL = "https://api.github.com/user";
 const DEFAULT_POST_DIR = "source/_posts";
 const REMOTE_NOTES_PATHS = ["source/notes-data.json", "notes-data.json"];
 const DEFAULT_CONFIG = {
@@ -36,6 +38,8 @@ const state = {
   dirty: false,
   remoteSha: null,
   config: loadConfig(),
+  workspaceStarted: false,
+  authUser: null,
   busy: false,
   category: "all",
   editor: null,
@@ -58,6 +62,12 @@ const fields = {
 };
 
 const elements = {
+  authPanel: root.querySelector("[data-admin-auth-panel]"),
+  adminWorkspaces: [...root.querySelectorAll("[data-admin-workspace]")],
+  authToken: root.querySelector("#auth-token"),
+  authUnlock: root.querySelector("#auth-unlock"),
+  authClear: root.querySelector("#auth-clear"),
+  authMessage: root.querySelector("#auth-message"),
   count: root.querySelector("#admin-count"),
   categoryStrip: root.querySelector("#admin-category-strip"),
   categoryOptions: root.querySelector("#category-options"),
@@ -91,9 +101,21 @@ const elements = {
 init();
 
 async function init() {
-  bindEvents();
-  initMarkdownEditor();
+  bindAuthEvents();
   hydrateConfigForm();
+  if (state.config.token) {
+    elements.authToken.value = state.config.token;
+    await unlockAdmin(state.config.token, { auto: true });
+    return;
+  }
+  renderAuthState("locked", "未验证时不会加载笔记编辑器。");
+}
+
+async function startWorkspace() {
+  if (state.workspaceStarted) return;
+  state.workspaceStarted = true;
+  bindWorkspaceEvents();
+  initMarkdownEditor();
   const localData = loadWorkspace();
   if (localData) {
     state.data = normalizeNotesData(localData);
@@ -105,7 +127,18 @@ async function init() {
   await loadPublicData();
 }
 
-function bindEvents() {
+function bindAuthEvents() {
+  elements.authUnlock.addEventListener("click", () => unlockAdmin(elements.authToken.value));
+  elements.authToken.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      unlockAdmin(elements.authToken.value);
+    }
+  });
+  elements.authClear.addEventListener("click", clearAdminCredentials);
+}
+
+function bindWorkspaceEvents() {
   elements.newNote.addEventListener("click", createNote);
   elements.duplicateNote.addEventListener("click", duplicateSelectedNote);
   elements.deleteNote.addEventListener("click", deleteSelectedNote);
@@ -117,6 +150,85 @@ function bindEvents() {
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
   fields.status.addEventListener("change", updateSelectedFromFields);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
+}
+
+async function unlockAdmin(rawToken, options = {}) {
+  const token = String(rawToken || "").trim();
+  if (!token) {
+    renderAuthState("locked", "需要 GitHub Token 才能进入管理区。", true);
+    return;
+  }
+  renderAuthState("checking", options.auto ? "正在验证本机凭据..." : "正在验证 GitHub 身份...");
+  try {
+    const user = await verifyOwnerToken(token);
+    state.authUser = user.login;
+    state.config = normalizeConfig({
+      ...state.config,
+      token,
+      owner: elements.configOwner.value.trim() || state.config.owner,
+      repo: elements.configRepo.value.trim() || state.config.repo,
+      branch: elements.configBranch.value.trim() || state.config.branch,
+      path: normalizePostDirectory(elements.configPath.value.trim() || state.config.path)
+    });
+    persistConfig();
+    hydrateConfigForm();
+    renderAuthState("unlocked", `已验证为 ${user.login}`);
+    await startWorkspace();
+  } catch (error) {
+    state.authUser = null;
+    state.config = normalizeConfig({ ...state.config, token: "" });
+    persistConfig();
+    hydrateConfigForm();
+    elements.authToken.value = "";
+    renderAuthState("locked", `验证失败：${error.message}`, true);
+  }
+}
+
+async function verifyOwnerToken(token) {
+  const user = await githubFetchWithToken(AUTH_USER_URL, token);
+  const login = String(user.login || "");
+  if (login.toLowerCase() !== OWNER_LOGIN.toLowerCase()) {
+    throw new Error(`当前账号是 ${login || "未知账号"}，不是 ${OWNER_LOGIN}`);
+  }
+  return user;
+}
+
+function renderAuthState(nextState, message, isError = false) {
+  root.dataset.authState = nextState;
+  const unlocked = nextState === "unlocked";
+  elements.authPanel.hidden = unlocked;
+  elements.adminWorkspaces.forEach((element) => {
+    element.hidden = !unlocked;
+  });
+  elements.authUnlock.disabled = nextState === "checking";
+  elements.authClear.disabled = nextState === "checking";
+  if (message) {
+    elements.authMessage.textContent = message;
+    elements.authMessage.style.color = isError ? "var(--note-red)" : "var(--note-muted)";
+  }
+}
+
+function clearAdminCredentials() {
+  state.authUser = null;
+  state.config = normalizeConfig({ ...state.config, token: "" });
+  persistConfig();
+  localStorage.removeItem(EDITOR_MODE_KEY);
+  elements.authToken.value = "";
+  hydrateConfigForm();
+  renderAuthState("locked", "已清除当前浏览器里的管理凭据。");
+  if (state.workspaceStarted) {
+    window.location.reload();
+  }
+}
+
+function hasOwnerAccess() {
+  return root.dataset.authState === "unlocked" && state.authUser?.toLowerCase() === OWNER_LOGIN.toLowerCase();
+}
+
+function requireOwnerAccess() {
+  if (hasOwnerAccess()) return true;
+  renderAuthState("locked", "先验证 GitHub 身份，再进入管理区。", true);
+  return false;
 }
 
 function initMarkdownEditor() {
@@ -485,6 +597,7 @@ async function loadPublicData() {
 }
 
 function createNote() {
+  if (!requireOwnerAccess()) return;
   const now = new Date().toISOString();
   const note = normalizeNote({
     id: makeId(),
@@ -505,6 +618,7 @@ function createNote() {
 }
 
 function duplicateSelectedNote() {
+  if (!requireOwnerAccess()) return;
   const note = getSelectedNote();
   if (!note) return;
   const now = new Date().toISOString();
@@ -524,6 +638,7 @@ function duplicateSelectedNote() {
 }
 
 function deleteSelectedNote() {
+  if (!requireOwnerAccess()) return;
   const note = getSelectedNote();
   if (!note) return;
   state.data.notes = state.data.notes.filter((item) => item.id !== note.id);
@@ -533,6 +648,7 @@ function deleteSelectedNote() {
 }
 
 function updateSelectedFromFields() {
+  if (!requireOwnerAccess()) return;
   const note = getSelectedNote();
   if (!note) return;
   note.title = fields.title.value.trimStart();
@@ -708,6 +824,7 @@ function setEditorEnabled(enabled) {
 }
 
 function toggleEditorMode() {
+  if (!requireOwnerAccess()) return;
   state.editorMode = state.editorMode === "vim" ? "default" : "vim";
   if (state.editorMode === "vim" && (!window.CodeMirror || !window.CodeMirror.keyMap.vim)) {
     state.editorMode = "default";
@@ -793,6 +910,7 @@ function setBusy(value) {
 }
 
 function saveWorkspace() {
+  if (!requireOwnerAccess()) return;
   persistWorkspace(true);
 }
 
@@ -832,6 +950,7 @@ function hydrateConfigForm() {
 }
 
 function saveConfig() {
+  if (!requireOwnerAccess()) return;
   state.config = {
     token: elements.configToken.value.trim(),
     owner: elements.configOwner.value.trim() || DEFAULT_CONFIG.owner,
@@ -839,8 +958,12 @@ function saveConfig() {
     branch: elements.configBranch.value.trim() || DEFAULT_CONFIG.branch,
     path: normalizePostDirectory(elements.configPath.value.trim() || DEFAULT_CONFIG.path)
   };
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(state.config));
+  persistConfig();
   setStatus("GitHub 配置已保存");
+}
+
+function persistConfig() {
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(state.config));
 }
 
 function loadConfig() {
@@ -859,6 +982,7 @@ function normalizeConfig(config) {
 }
 
 async function pullRemote() {
+  if (!requireOwnerAccess()) return;
   saveConfig();
   if (!state.config.token) {
     setStatus("需要 GitHub Token", true);
@@ -882,6 +1006,7 @@ async function pullRemote() {
 }
 
 async function publishRemote() {
+  if (!requireOwnerAccess()) return;
   saveConfig();
   if (!state.config.token) {
     setStatus("需要 GitHub Token", true);
@@ -1076,11 +1201,15 @@ function fileApiUrl(path) {
 }
 
 async function githubFetch(url, options = {}) {
+  return githubFetchWithToken(url, state.config.token, options);
+}
+
+async function githubFetchWithToken(url, token, options = {}) {
   const response = await fetch(url, {
     ...options,
     headers: {
       Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${state.config.token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       "X-GitHub-Api-Version": "2022-11-28",
       ...(options.headers || {})

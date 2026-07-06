@@ -125,8 +125,7 @@ function renderList(notes) {
     elements.list.innerHTML = `
       <div class="empty-state">
         <h2>${hasNotes ? "没有匹配结果" : "还没有笔记"}</h2>
-        <p>${hasNotes ? "换个关键词或标签试试。" : "从管理页新建一条笔记后，这里会变成你的文档列表。"}</p>
-        ${hasNotes ? "" : '<a class="button-link" href="/admin/">新建笔记</a>'}
+        <p>${hasNotes ? "换个关键词或标签试试。" : "发布第一条笔记后，这里会变成你的文档列表。"}</p>
       </div>
     `;
     return;
