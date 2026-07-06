@@ -43,6 +43,8 @@ const state = {
   vimBlockCursor: null,
   typingPulse: null,
   typingTimer: null,
+  autosaveTimer: null,
+  autosaveStatus: "saved",
   syncingEditor: false
 };
 
@@ -134,6 +136,7 @@ function bindWorkspaceEvents() {
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
   fields.status.addEventListener("change", updateSelectedFromFields);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
+  window.addEventListener("beforeunload", flushAutosave);
 }
 
 async function checkSession() {
@@ -849,7 +852,14 @@ function contentWithoutTitleHeading(note) {
 }
 
 function renderDirtyState() {
-  elements.dirty.textContent = state.dirty ? "dirty" : "clean";
+  const labels = {
+    pending: "未保存",
+    saving: "保存中",
+    saved: "已保存",
+    error: "保存失败"
+  };
+  elements.dirty.textContent = labels[state.autosaveStatus] || (state.dirty ? "未保存" : "已保存");
+  elements.dirty.className = `state-pill state-${state.autosaveStatus || (state.dirty ? "pending" : "saved")}`;
 }
 
 function validateSelected() {
@@ -872,9 +882,51 @@ function getSelectedNote() {
 
 function markDirty(message) {
   state.dirty = true;
+  state.autosaveStatus = "pending";
   setStatus(message);
-  persistWorkspace(false);
+  scheduleAutosave();
   renderDirtyState();
+}
+
+function scheduleAutosave() {
+  window.clearTimeout(state.autosaveTimer);
+  state.autosaveTimer = window.setTimeout(() => autoSaveWorkspace(), 500);
+}
+
+function autoSaveWorkspace({ manual = false, silent = false } = {}) {
+  window.clearTimeout(state.autosaveTimer);
+  state.autosaveTimer = null;
+  if (!state.workspaceStarted || !hasOwnerAccess()) return;
+
+  state.autosaveStatus = "saving";
+  if (!silent) setStatus(manual ? "正在保存..." : "正在自动保存...");
+  renderDirtyState();
+
+  try {
+    persistWorkspace(false);
+    state.dirty = false;
+    state.autosaveStatus = "saved";
+    if (!silent) {
+      const time = new Intl.DateTimeFormat("zh-CN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false
+      }).format(new Date());
+      setStatus(`${manual ? "已保存到本地" : "已自动保存"} ${time}`);
+    }
+  } catch (error) {
+    state.dirty = true;
+    state.autosaveStatus = "error";
+    if (!silent) setStatus(`自动保存失败：${error.message || "浏览器存储不可用"}`, true);
+  } finally {
+    renderDirtyState();
+  }
+}
+
+function flushAutosave() {
+  if (!state.autosaveTimer) return;
+  autoSaveWorkspace({ silent: true });
 }
 
 function setStatus(message, isError = false) {
@@ -891,7 +943,7 @@ function setBusy(value) {
 
 function saveWorkspace() {
   if (!requireOwnerAccess()) return;
-  persistWorkspace(true);
+  autoSaveWorkspace({ manual: true });
 }
 
 function persistWorkspace(report) {

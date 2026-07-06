@@ -203,6 +203,26 @@
   background: #eeeeec;
 }
 
+.state-pending {
+  color: var(--note-yellow);
+  background: var(--note-yellow-soft);
+}
+
+.state-saving {
+  color: var(--note-blue);
+  background: var(--note-blue-soft);
+}
+
+.state-saved {
+  color: var(--note-green);
+  background: var(--note-green-soft);
+}
+
+.state-error {
+  color: var(--note-red);
+  background: var(--note-red-soft);
+}
+
 .state-published {
   color: var(--note-green);
   background: var(--note-green-soft);
