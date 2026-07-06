@@ -21,6 +21,7 @@ export default {
       if (url.pathname === "/api/logout" && request.method === "POST") return await logout(request, env);
       if (url.pathname === "/api/notes-data" && request.method === "GET") return await notesData(request, env);
       if (url.pathname === "/api/publish" && request.method === "POST") return await publish(request, env);
+      if (url.pathname === "/api/publish-status" && request.method === "GET") return await publishStatus(request, env);
 
       return json({ error: "Not found" }, 404, request, env);
     } catch (error) {
@@ -158,7 +159,37 @@ async function publish(request, env) {
   }
 
   const result = await githubPutContent(path, buildHexoPost(note, env), `${sha ? "Update" : "Publish"} post: ${note.title}`, sha, env);
-  return json({ ok: true, path, commit: result.commit?.sha || null }, 200, request, env);
+  return json({
+    ok: true,
+    path,
+    publicUrl: publicPostUrl(note, env),
+    commit: result.commit?.sha || null
+  }, 200, request, env);
+}
+
+async function publishStatus(request, env) {
+  await requireAdmin(request, env);
+  requireAllowedOrigin(request, env);
+
+  const url = new URL(request.url);
+  const publicUrl = safePublicUrl(url.searchParams.get("url"), env);
+  const title = String(url.searchParams.get("title") || "").trim();
+  const checkUrl = new URL(publicUrl);
+  checkUrl.searchParams.set("_publish_check", Date.now().toString(36));
+
+  const response = await fetch(checkUrl.href, {
+    headers: {
+      "Cache-Control": "no-cache",
+      "User-Agent": "tomfng-blog-admin-worker"
+    },
+    cf: { cacheTtl: 0, cacheEverything: false }
+  });
+  const text = response.ok ? await response.text() : "";
+  return json({
+    ready: response.ok && (!title || text.includes(title)),
+    status: response.status,
+    url: publicUrl
+  }, 200, request, env);
 }
 
 async function requireAdmin(request, env) {
@@ -258,6 +289,17 @@ function postFilePath(note, env) {
   const dir = normalizePostDirectory(env.POST_DIR || "source/_posts");
   const slug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
   return dir ? `${dir}/${slug}.md` : `${slug}.md`;
+}
+
+function publicPostUrl(note, env) {
+  const [datePart] = formatHexoDate(note.createdAt, env).split(" ");
+  const [year, month, day] = datePart.split("-");
+  const slug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
+  return `${siteBaseUrl(env)}/${year}/${month}/${day}/${encodeURIComponent(slug)}/`;
+}
+
+function siteBaseUrl(env) {
+  return String(env.SITE_URL || "http://tomfng.space").trim().replace(/\/+$/g, "") || "http://tomfng.space";
 }
 
 function buildHexoPost(note, env) {
@@ -435,6 +477,18 @@ function safeReturnTo(value, env) {
     return allowedOrigins(env).includes(url.origin) ? url.href : fallback;
   } catch {
     return fallback;
+  }
+}
+
+function safePublicUrl(value, env) {
+  try {
+    const url = new URL(value || siteBaseUrl(env));
+    const allowed = new Set(allowedOrigins(env));
+    allowed.add(new URL(siteBaseUrl(env)).origin);
+    if (!allowed.has(url.origin)) throw new Error("bad origin");
+    return url.href;
+  } catch {
+    throw new HttpError(400, "只能检查本站发布地址");
   }
 }
 
