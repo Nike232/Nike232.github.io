@@ -536,10 +536,13 @@ function updateSelectedFromFields() {
   const note = getSelectedNote();
   if (!note) return;
   note.title = fields.title.value.trimStart();
-  note.slug = fields.slug.value.trim();
   note.category = normalizeCategory(fields.category.value);
   note.tags = normalizeTags(fields.tags.value);
   note.status = fields.status.value;
+  note.slug = note.status === "published"
+    ? ensureNoteSlug({ ...note, slug: fields.slug.value.trim() })
+    : autoSlugForTitle(note.title);
+  fields.slug.value = note.slug;
   note.summary = fields.summary.value.trimStart();
   note.content = getEditorValue();
   note.updatedAt = new Date().toISOString();
@@ -663,7 +666,7 @@ function renderEditor() {
   }
 
   fields.title.value = note.title;
-  fields.slug.value = note.slug;
+  fields.slug.value = syncDraftSlug(note);
   fields.category.value = normalizeCategory(note.category);
   fields.tags.value = note.tags.join(", ");
   fields.status.value = note.status;
@@ -762,10 +765,7 @@ function validateSelected() {
     elements.errorTitle.textContent = "需要标题";
     valid = false;
   }
-  if (!note.slug.trim()) {
-    elements.errorSlug.textContent = "需要 slug";
-    valid = false;
-  }
+  ensureNoteSlug(note);
   return valid;
 }
 
@@ -892,6 +892,7 @@ async function publishRemote() {
     setStatus("先选择一篇文章", true);
     return;
   }
+  fields.slug.value = syncDraftSlug(note);
   if (!validateSelected()) return;
 
   setBusy(true);
@@ -1025,6 +1026,32 @@ function normalizePostSlug(slug, title) {
     .replace(/\s+/g, "-")
     .replace(/^-+|-+$/g, "");
   return cleaned || makeSlug(title || "post");
+}
+
+function autoSlugForTitle(title) {
+  const cleanTitle = String(title || "").trim();
+  if (!cleanTitle || cleanTitle === "无标题") {
+    return `post-${Date.now().toString(36)}`;
+  }
+  return normalizePostSlug(makeSlug(cleanTitle), cleanTitle);
+}
+
+function ensureNoteSlug(note) {
+  if (!note) return "";
+  note.slug = normalizePostSlug(note.slug || autoSlugForTitle(note.title), note.title);
+  return note.slug;
+}
+
+function syncDraftSlug(note) {
+  if (!note) return "";
+  if (note.status !== "published" && (!note.slug || isGeneratedPlaceholderSlug(note.slug))) {
+    note.slug = autoSlugForTitle(note.title);
+  }
+  return ensureNoteSlug(note);
+}
+
+function isGeneratedPlaceholderSlug(slug) {
+  return /^(note|post)-[a-z0-9]+$/i.test(String(slug || "").trim());
 }
 
 function yamlScalar(value) {
