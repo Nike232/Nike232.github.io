@@ -1672,7 +1672,7 @@
 
 .token-grid {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) repeat(4, minmax(112px, 1fr)) auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
   gap: 10px;
   padding: 0 clamp(22px, 5vw, 64px) 18px;
 }

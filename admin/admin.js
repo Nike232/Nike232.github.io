@@ -21,15 +21,8 @@ const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const OWNER_LOGIN = "Nike232";
-const AUTH_USER_URL = "https://api.github.com/user";
-const DEFAULT_POST_DIR = "source/_posts";
-const REMOTE_NOTES_PATHS = ["source/notes-data.json", "notes-data.json"];
 const DEFAULT_CONFIG = {
-  owner: "Nike232",
-  repo: "Nike232.github.io",
-  branch: "main",
-  path: DEFAULT_POST_DIR,
-  token: ""
+  apiBase: ""
 };
 
 const state = {
@@ -64,8 +57,8 @@ const fields = {
 const elements = {
   authPanel: root.querySelector("[data-admin-auth-panel]"),
   adminWorkspaces: [...root.querySelectorAll("[data-admin-workspace]")],
-  authToken: root.querySelector("#auth-token"),
-  authUnlock: root.querySelector("#auth-unlock"),
+  authApiBase: root.querySelector("#auth-api-base"),
+  authLogin: root.querySelector("#auth-login"),
   authClear: root.querySelector("#auth-clear"),
   authMessage: root.querySelector("#auth-message"),
   count: root.querySelector("#admin-count"),
@@ -87,15 +80,12 @@ const elements = {
   pullRemote: root.querySelector("#pull-remote"),
   publishRemote: root.querySelector("#publish-remote"),
   saveConfig: root.querySelector("#save-config"),
+  logoutAdmin: root.querySelector("#logout-admin"),
   toggleVim: root.querySelector("#toggle-vim"),
   editorMode: root.querySelector("#editor-mode"),
   editorPosition: root.querySelector("#editor-position"),
   editorWords: root.querySelector("#editor-words"),
-  configToken: root.querySelector("#config-token"),
-  configOwner: root.querySelector("#config-owner"),
-  configRepo: root.querySelector("#config-repo"),
-  configBranch: root.querySelector("#config-branch"),
-  configPath: root.querySelector("#config-path")
+  configApiBase: root.querySelector("#config-api-base")
 };
 
 init();
@@ -103,12 +93,7 @@ init();
 async function init() {
   bindAuthEvents();
   hydrateConfigForm();
-  if (state.config.token) {
-    elements.authToken.value = state.config.token;
-    await unlockAdmin(state.config.token, { auto: true });
-    return;
-  }
-  renderAuthState("locked", "未验证时不会加载笔记编辑器。");
+  await checkSession();
 }
 
 async function startWorkspace() {
@@ -128,13 +113,8 @@ async function startWorkspace() {
 }
 
 function bindAuthEvents() {
-  elements.authUnlock.addEventListener("click", () => unlockAdmin(elements.authToken.value));
-  elements.authToken.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      unlockAdmin(elements.authToken.value);
-    }
-  });
+  elements.authLogin.addEventListener("click", startGithubLogin);
+  elements.authApiBase.addEventListener("change", saveApiBaseFromAuth);
   elements.authClear.addEventListener("click", clearAdminCredentials);
 }
 
@@ -146,51 +126,42 @@ function bindWorkspaceEvents() {
   elements.pullRemote.addEventListener("click", pullRemote);
   elements.publishRemote.addEventListener("click", publishRemote);
   elements.saveConfig.addEventListener("click", saveConfig);
+  elements.logoutAdmin.addEventListener("click", logoutAdmin);
   elements.toggleVim.addEventListener("click", toggleEditorMode);
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
   fields.status.addEventListener("change", updateSelectedFromFields);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
 }
 
-async function unlockAdmin(rawToken, options = {}) {
-  const token = String(rawToken || "").trim();
-  if (!token) {
-    renderAuthState("locked", "需要 GitHub Token 才能进入管理区。", true);
-    return;
-  }
-  renderAuthState("checking", options.auto ? "正在验证本机凭据..." : "正在验证 GitHub 身份...");
+async function checkSession() {
+  renderAuthState("checking", "正在检查登录状态...");
   try {
-    const user = await verifyOwnerToken(token);
-    state.authUser = user.login;
-    state.config = normalizeConfig({
-      ...state.config,
-      token,
-      owner: elements.configOwner.value.trim() || state.config.owner,
-      repo: elements.configRepo.value.trim() || state.config.repo,
-      branch: elements.configBranch.value.trim() || state.config.branch,
-      path: normalizePostDirectory(elements.configPath.value.trim() || state.config.path)
-    });
-    persistConfig();
-    hydrateConfigForm();
-    renderAuthState("unlocked", `已验证为 ${user.login}`);
+    const session = await apiFetch("/api/session");
+    const login = session.login || "";
+    if (!session.authenticated || login.toLowerCase() !== OWNER_LOGIN.toLowerCase()) {
+      throw new Error(session.authenticated ? `当前账号是 ${login || "未知账号"}，不是 ${OWNER_LOGIN}` : "未登录");
+    }
+    state.authUser = login;
+    renderAuthState("unlocked", `已登录为 ${login}`);
     await startWorkspace();
   } catch (error) {
     state.authUser = null;
-    state.config = normalizeConfig({ ...state.config, token: "" });
-    persistConfig();
-    hydrateConfigForm();
-    elements.authToken.value = "";
-    renderAuthState("locked", `验证失败：${error.message}`, true);
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get("admin_error");
+    renderAuthState("locked", oauthError ? `登录失败：${oauthError}` : "未登录时不会加载笔记编辑器。", Boolean(oauthError));
   }
 }
 
-async function verifyOwnerToken(token) {
-  const user = await githubFetchWithToken(AUTH_USER_URL, token);
-  const login = String(user.login || "");
-  if (login.toLowerCase() !== OWNER_LOGIN.toLowerCase()) {
-    throw new Error(`当前账号是 ${login || "未知账号"}，不是 ${OWNER_LOGIN}`);
-  }
-  return user;
+function startGithubLogin() {
+  saveApiBaseFromAuth();
+  const returnTo = window.location.origin + window.location.pathname;
+  window.location.href = `${apiUrl("/api/auth/github")}?returnTo=${encodeURIComponent(returnTo)}`;
+}
+
+function saveApiBaseFromAuth() {
+  state.config = normalizeConfig({ ...state.config, apiBase: elements.authApiBase.value.trim() });
+  persistConfig();
+  hydrateConfigForm();
 }
 
 function renderAuthState(nextState, message, isError = false) {
@@ -200,7 +171,7 @@ function renderAuthState(nextState, message, isError = false) {
   elements.adminWorkspaces.forEach((element) => {
     element.hidden = !unlocked;
   });
-  elements.authUnlock.disabled = nextState === "checking";
+  elements.authLogin.disabled = nextState === "checking";
   elements.authClear.disabled = nextState === "checking";
   if (message) {
     elements.authMessage.textContent = message;
@@ -210,12 +181,11 @@ function renderAuthState(nextState, message, isError = false) {
 
 function clearAdminCredentials() {
   state.authUser = null;
-  state.config = normalizeConfig({ ...state.config, token: "" });
+  state.config = normalizeConfig({ ...state.config, apiBase: "" });
   persistConfig();
   localStorage.removeItem(EDITOR_MODE_KEY);
-  elements.authToken.value = "";
   hydrateConfigForm();
-  renderAuthState("locked", "已清除当前浏览器里的管理凭据。");
+  renderAuthState("locked", "已清除当前浏览器里的管理设置。");
   if (state.workspaceStarted) {
     window.location.reload();
   }
@@ -227,7 +197,7 @@ function hasOwnerAccess() {
 
 function requireOwnerAccess() {
   if (hasOwnerAccess()) return true;
-  renderAuthState("locked", "先验证 GitHub 身份，再进入管理区。", true);
+  renderAuthState("locked", "先用 GitHub 登录，再进入管理区。", true);
   return false;
 }
 
@@ -904,7 +874,7 @@ function setStatus(message, isError = false) {
 
 function setBusy(value) {
   state.busy = value;
-  [elements.pullRemote, elements.publishRemote, elements.saveLocal, elements.saveConfig].forEach((button) => {
+  [elements.pullRemote, elements.publishRemote, elements.saveLocal, elements.saveConfig, elements.logoutAdmin].forEach((button) => {
     button.disabled = value;
   });
 }
@@ -942,24 +912,18 @@ function serializeData() {
 }
 
 function hydrateConfigForm() {
-  elements.configToken.value = state.config.token || "";
-  elements.configOwner.value = state.config.owner;
-  elements.configRepo.value = state.config.repo;
-  elements.configBranch.value = state.config.branch;
-  elements.configPath.value = state.config.path;
+  elements.authApiBase.value = state.config.apiBase || "";
+  elements.configApiBase.value = state.config.apiBase || "";
 }
 
 function saveConfig() {
   if (!requireOwnerAccess()) return;
   state.config = {
-    token: elements.configToken.value.trim(),
-    owner: elements.configOwner.value.trim() || DEFAULT_CONFIG.owner,
-    repo: elements.configRepo.value.trim() || DEFAULT_CONFIG.repo,
-    branch: elements.configBranch.value.trim() || DEFAULT_CONFIG.branch,
-    path: normalizePostDirectory(elements.configPath.value.trim() || DEFAULT_CONFIG.path)
+    apiBase: elements.configApiBase.value.trim()
   };
   persistConfig();
-  setStatus("GitHub 配置已保存");
+  hydrateConfigForm();
+  setStatus("发布服务配置已保存");
 }
 
 function persistConfig() {
@@ -977,26 +941,73 @@ function loadConfig() {
 
 function normalizeConfig(config) {
   const next = { ...DEFAULT_CONFIG, ...(config || {}) };
-  next.path = normalizePostDirectory(next.path);
+  next.apiBase = normalizeApiBase(next.apiBase);
   return next;
+}
+
+function normalizeApiBase(value) {
+  const raw = String(value || "").trim().replace(/\/+$/g, "");
+  if (!raw) return "";
+  return /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+}
+
+function apiUrl(path) {
+  const cleanPath = String(path || "");
+  const normalizedPath = cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`;
+  return `${state.config.apiBase || ""}${normalizedPath}`;
+}
+
+async function apiFetch(path, options = {}) {
+  const headers = {
+    Accept: "application/json",
+    ...(options.headers || {})
+  };
+  if (options.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  const response = await fetch(apiUrl(path), {
+    ...options,
+    credentials: "include",
+    headers
+  });
+  const text = await response.text();
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { error: text ? text.slice(0, 160) : "发布服务返回了非 JSON 响应" };
+  }
+  if (!response.ok) {
+    throw new Error(payload.error || payload.message || `${response.status} ${response.statusText}`);
+  }
+  return payload;
+}
+
+async function logoutAdmin() {
+  setBusy(true);
+  try {
+    await apiFetch("/api/logout", { method: "POST" });
+  } catch {
+    // Even if the remote session is already gone, clear this browser state.
+  } finally {
+    state.authUser = null;
+    setBusy(false);
+    renderAuthState("locked", "已退出管理区。");
+    window.location.reload();
+  }
 }
 
 async function pullRemote() {
   if (!requireOwnerAccess()) return;
   saveConfig();
-  if (!state.config.token) {
-    setStatus("需要 GitHub Token", true);
-    return;
-  }
   setBusy(true);
   try {
-    const remote = await getRemoteNotesData();
-    state.remoteSha = remote.sha;
-    state.data = normalizeNotesData(remote.data);
+    const remote = await apiFetch("/api/notes-data");
+    state.data = normalizeNotesData(remote.data || { notes: [] });
     state.selectedId = state.data.notes[0]?.id || null;
     state.dirty = false;
     persistWorkspace(false);
-    setStatus(`已拉取笔记库：${remote.path}`);
+    setStatus(`已拉取笔记库：${remote.path || "notes-data.json"}`);
     render();
   } catch (error) {
     setStatus(`拉取失败：${error.message}`, true);
@@ -1008,10 +1019,6 @@ async function pullRemote() {
 async function publishRemote() {
   if (!requireOwnerAccess()) return;
   saveConfig();
-  if (!state.config.token) {
-    setStatus("需要 GitHub Token", true);
-    return;
-  }
   const note = getSelectedNote();
   if (!note) {
     setStatus("先选择一篇文章", true);
@@ -1027,120 +1034,20 @@ async function publishRemote() {
       status: "published",
       updatedAt: new Date().toISOString()
     });
-    const postPath = postFilePath(publishedNote);
-    let sha = null;
-    try {
-      const remote = await getRemoteFile(postPath);
-      sha = remote.sha;
-    } catch (error) {
-      if (!String(error.message).includes("404")) throw error;
-    }
-
-    if (!(await branchLooksLikeHexoSource())) {
-      throw new Error(`目标分支 ${state.config.branch} 缺少 _config.yml，请选择 Hexo 源码分支后发布`);
-    }
-    await putRemoteFile(
-      postPath,
-      buildHexoPost(publishedNote),
-      `${sha ? "Update" : "Publish"} post: ${publishedNote.title}`,
-      sha
-    );
+    const remote = await apiFetch("/api/publish", {
+      method: "POST",
+      body: JSON.stringify({ note: publishedNote })
+    });
     Object.assign(note, publishedNote);
     state.dirty = false;
     persistWorkspace(false);
-    setStatus(`已发布文章：${postPath}`);
+    setStatus(`已发布文章：${remote.path || publishedNote.title}`);
     render();
   } catch (error) {
     setStatus(`发布失败：${error.message}`, true);
   } finally {
     setBusy(false);
   }
-}
-
-async function getRemoteNotesData() {
-  let lastError = null;
-  for (const path of REMOTE_NOTES_PATHS) {
-    try {
-      const remote = await getRemoteFile(path);
-      return {
-        path,
-        sha: remote.sha,
-        data: JSON.parse(decodeBase64(remote.content || ""))
-      };
-    } catch (error) {
-      lastError = error;
-      if (!String(error.message).includes("404")) throw error;
-    }
-  }
-  throw lastError || new Error("未找到远程笔记库");
-}
-
-async function branchLooksLikeHexoSource() {
-  try {
-    await getRemoteFile("_config.yml");
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function getRemoteFile(path) {
-  return githubFetch(`${fileApiUrl(path)}?ref=${encodeURIComponent(state.config.branch)}`);
-}
-
-async function putRemoteFile(path, content, message, sha) {
-  const body = {
-    message,
-    content: encodeBase64(content),
-    branch: state.config.branch
-  };
-  if (sha) body.sha = sha;
-  return githubFetch(fileApiUrl(path), {
-    method: "PUT",
-    body: JSON.stringify(body)
-  });
-}
-
-function postFilePath(note) {
-  const dir = normalizePostDirectory(state.config.path);
-  const slug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
-  return dir ? `${dir}/${slug}.md` : `${slug}.md`;
-}
-
-function buildHexoPost(note) {
-  const category = normalizeCategory(note.category);
-  const tags = normalizeTags(note.tags);
-  const frontMatter = [
-    "---",
-    `title: ${yamlScalar(note.title || "无标题")}`,
-    `date: ${formatHexoDate(note.createdAt)}`,
-    `updated: ${formatHexoDate(note.updatedAt)}`,
-    `categories:`,
-    `  - ${yamlScalar(category)}`
-  ];
-  if (tags.length) {
-    frontMatter.push("tags:", ...tags.map((tag) => `  - ${yamlScalar(tag)}`));
-  }
-  if (note.summary) {
-    frontMatter.push(`description: ${yamlScalar(note.summary)}`);
-  }
-  frontMatter.push("---");
-  return `${frontMatter.join("\n")}\n\n${postBody(note)}\n`;
-}
-
-function postBody(note) {
-  return stripFrontMatter(contentWithoutTitleHeading(note)).trim();
-}
-
-function stripFrontMatter(markdown) {
-  return String(markdown || "").replace(/^---\s*\n[\s\S]*?\n---\s*(\n|$)/, "");
-}
-
-function normalizePostDirectory(path) {
-  const raw = String(path || DEFAULT_POST_DIR).trim().replace(/\\/g, "/");
-  if (!raw || raw === "notes-data.json" || raw === "source/notes-data.json") return DEFAULT_POST_DIR;
-  const withoutFile = /\.md$/i.test(raw) ? raw.replace(/\/?[^/]*\.md$/i, "") : raw;
-  return withoutFile.replace(/^\/+|\/+$/g, "") || DEFAULT_POST_DIR;
 }
 
 function normalizePostSlug(slug, title) {
@@ -1179,62 +1086,4 @@ function isGeneratedPlaceholderSlug(slug) {
   return /^(note|post)-[a-z0-9]+$/i.test(String(slug || "").trim());
 }
 
-function yamlScalar(value) {
-  return JSON.stringify(String(value || ""));
-}
-
-function formatHexoDate(value) {
-  const date = new Date(value || Date.now());
-  const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
-  const pad = (number) => String(number).padStart(2, "0");
-  return [
-    `${safeDate.getFullYear()}-${pad(safeDate.getMonth() + 1)}-${pad(safeDate.getDate())}`,
-    `${pad(safeDate.getHours())}:${pad(safeDate.getMinutes())}:${pad(safeDate.getSeconds())}`
-  ].join(" ");
-}
-
-function fileApiUrl(path) {
-  const owner = encodeURIComponent(state.config.owner);
-  const repo = encodeURIComponent(state.config.repo);
-  const remotePath = String(path || state.config.path).split("/").map(encodeURIComponent).join("/");
-  return `https://api.github.com/repos/${owner}/${repo}/contents/${remotePath}`;
-}
-
-async function githubFetch(url, options = {}) {
-  return githubFetchWithToken(url, state.config.token, options);
-}
-
-async function githubFetchWithToken(url, token, options = {}) {
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      ...(options.headers || {})
-    }
-  });
-  const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
-  if (!response.ok) {
-    throw new Error(`${response.status} ${payload.message || response.statusText}`);
-  }
-  return payload;
-}
-
-function encodeBase64(value) {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
-}
-
-function decodeBase64(value) {
-  const binary = atob(value.replace(/\s/g, ""));
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
 }());
