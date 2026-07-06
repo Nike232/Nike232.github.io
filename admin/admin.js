@@ -21,8 +21,9 @@ const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const OWNER_LOGIN = "Nike232";
+const DEFAULT_API_BASE = "https://tomfng-blog-admin.tomfng-space.workers.dev";
 const DEFAULT_CONFIG = {
-  apiBase: "",
+  apiBase: DEFAULT_API_BASE,
   sessionToken: ""
 };
 
@@ -190,7 +191,7 @@ function renderAuthState(nextState, message, isError = false) {
 
 function clearAdminCredentials() {
   state.authUser = null;
-  state.config = normalizeConfig({ ...state.config, apiBase: "", sessionToken: "" });
+  state.config = normalizeConfig({ ...DEFAULT_CONFIG, sessionToken: "" });
   persistConfig();
   localStorage.removeItem(EDITOR_MODE_KEY);
   hydrateConfigForm();
@@ -951,7 +952,7 @@ function loadConfig() {
 
 function normalizeConfig(config) {
   const next = { ...DEFAULT_CONFIG, ...(config || {}) };
-  next.apiBase = normalizeApiBase(next.apiBase);
+  next.apiBase = normalizeApiBase(next.apiBase || DEFAULT_API_BASE);
   next.sessionToken = String(next.sessionToken || "");
   return next;
 }
