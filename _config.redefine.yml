@@ -471,9 +471,9 @@ inject:
     - <script src="/vendor/marked-katex/index.umd.js?v=5.1.10"></script>
     - <script src="/vendor/dompurify/purify.min.js?v=3.4.12"></script>
     - <script src="/mermaid-renderer.js?v=20260714-mermaid1"></script>
-    - <script src="/note-utils.js?v=20260714-typora14"></script>
+    - <script src="/note-utils.js?v=20260714-typora15"></script>
     - <script src="/notes/notes.js?v=20260714-mermaid1"></script>
-    - <script src="/admin/admin.js?v=20260714-typora18"></script>
+    - <script src="/admin/admin.js?v=20260714-typora19"></script>
 # INJECT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< end
 
 

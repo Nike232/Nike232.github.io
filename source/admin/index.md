@@ -140,11 +140,11 @@ comments: false
 </div>
 <div class="editor-link-popover" id="editor-link-popover" role="dialog" aria-label="编辑链接" hidden>
 <label class="editor-link-input editor-link-label">
-<i class="fa-solid fa-font" aria-hidden="true"></i>
+<i class="fa-solid fa-font" data-resource-label-icon aria-hidden="true"></i>
 <input id="editor-link-label" type="text" maxlength="240" autocomplete="off" placeholder="链接文字" aria-label="链接文字">
 </label>
 <label class="editor-link-input editor-link-url">
-<i class="fa-solid fa-link" aria-hidden="true"></i>
+<i class="fa-solid fa-link" data-resource-url-icon aria-hidden="true"></i>
 <input id="editor-link-url" type="text" inputmode="url" maxlength="2048" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="粘贴或输入链接" aria-label="链接地址" aria-describedby="editor-link-error">
 </label>
 <div class="editor-link-actions">

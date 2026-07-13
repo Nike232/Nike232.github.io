@@ -18,7 +18,9 @@ const {
   editMarkdownTable,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  findMarkdownImageAt,
   findMarkdownLinkAt,
+  formatMarkdownImage,
   formatMarkdownLink,
   getMarkdownTableContext,
   markdownBlockTemplate,
@@ -26,6 +28,7 @@ const {
   markdownToHtml,
   mergeRemotePosts,
   normalizeEditorViewState,
+  normalizeMarkdownImageUrl,
   normalizeMarkdownLinkUrl,
   normalizeNote,
   parseMarkdownSlashContext,
@@ -353,15 +356,29 @@ test("inline links can be found, normalized, and rewritten in place", () => {
     titleSuffix: ' "官方"'
   });
   assert.equal(findMarkdownLinkAt(line, line.indexOf("图片") + 1), null);
+  assert.deepEqual(findMarkdownImageAt(line, line.indexOf("图片") + 1), {
+    from: line.indexOf("![图片]"),
+    to: line.length,
+    alt: "图片",
+    url: "/image.png",
+    titleSuffix: ""
+  });
   assert.equal(findMarkdownLinkAt('[\\[规范\\]](./guide.md)', 4).label, "[规范]");
 
   assert.equal(normalizeMarkdownLinkUrl("https://example.com/a (b)"), "https://example.com/a%20%28b%29");
   assert.equal(normalizeMarkdownLinkUrl("../guide.md#intro"), "../guide.md#intro");
   assert.equal(normalizeMarkdownLinkUrl("javascript:alert(1)"), "");
   assert.equal(normalizeMarkdownLinkUrl("//evil.example"), "");
+  assert.equal(normalizeMarkdownImageUrl("/images/photo (1).webp"), "/images/photo%20%281%29.webp");
+  assert.equal(normalizeMarkdownImageUrl("mailto:owner@example.com"), "");
+  assert.equal(normalizeMarkdownImageUrl("#preview"), "");
   assert.equal(
     formatMarkdownLink("A [B]", "https://example.com/a_(b)", ' "说明"'),
     '[A \\[B\\]](https://example.com/a_%28b%29 "说明")'
+  );
+  assert.equal(
+    formatMarkdownImage("示例 [图]", "/images/photo (1).webp"),
+    '![示例 \\[图\\]](/images/photo%20%281%29.webp)'
   );
 });
 
