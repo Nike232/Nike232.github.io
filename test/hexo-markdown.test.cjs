@@ -62,3 +62,18 @@ test('published Hexo articles preserve Mermaid blocks for browser rendering', as
   assert.match(html, /A\[开始\] --&gt; B\[完成\]/);
   assert.match(html, /<code class="language-js">const answer = 42;/);
 });
+
+test('published Hexo articles render linked footnotes', async () => {
+  const html = await hexo.render.render({
+    engine: 'markdown',
+    text: [
+      '正文引用[^1]。',
+      '',
+      '[^1]: 发布后的脚注内容。'
+    ].join('\n')
+  });
+
+  assert.match(html, /<sup><a id="footnote-ref-1" href="#footnote-1" data-footnote-ref/);
+  assert.match(html, /<section class="footnotes" data-footnotes>/);
+  assert.match(html, /aria-label="返回引用 1"/);
+});

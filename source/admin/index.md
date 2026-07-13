@@ -123,6 +123,7 @@ comments: false
 <button type="button" role="menuitem" data-block-command="mermaid"><i class="fa-solid fa-diagram-project"></i><span>流程图</span></button>
 <button type="button" role="menuitem" data-block-command="math-block"><i class="fa-solid fa-square-root-variable"></i><span>公式块</span></button>
 <button type="button" role="menuitem" data-block-command="table"><i class="fa-solid fa-table-cells"></i><span>表格</span></button>
+<button type="button" role="menuitem" data-block-command="footnote"><i class="fa-solid fa-superscript"></i><span>脚注</span></button>
 <button type="button" role="menuitem" data-block-command="horizontal-rule"><i class="fa-solid fa-minus"></i><span>分割线</span></button>
 <button type="button" role="menuitem" data-block-command="image"><i class="fa-regular fa-image"></i><span>图片</span></button>
 </div>

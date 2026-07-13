@@ -6,6 +6,7 @@ const { marked } = require("marked");
 global.window = new JSDOM("<!doctype html><html><body></body></html>").window;
 window.marked = marked;
 window.markedKatex = require("marked-katex-extension");
+window.markedFootnote = require("marked-footnote");
 window.DOMPurify = require("dompurify")(window);
 require("../source/note-utils.js");
 
@@ -19,6 +20,7 @@ const {
   filterNotesByQuery,
   getMarkdownTableContext,
   markdownBlockTemplate,
+  markdownFootnoteTemplate,
   markdownToHtml,
   mergeRemotePosts,
   normalizeEditorViewState,
@@ -150,6 +152,20 @@ test("Markdown preview renders complete GFM document structures", () => {
   assert.match(html, /<table>[\s\S]*<th>指标<\/th>[\s\S]*<td[^>]*>98%<\/td>/);
   assert.match(html, /<code class="language-js">const answer = 42;/);
   assert.match(html, /<a href="\.\/guide\.md">相对链接<\/a>/);
+});
+
+test("Markdown preview renders safe linked footnotes", () => {
+  const html = markdownToHtml([
+    "正文引用[^1]。",
+    "",
+    "[^1]: 脚注内容与[危险链接](javascript:alert(1))。"
+  ].join("\n"));
+
+  assert.match(html, /<sup><a id="footnote-ref-1" href="#footnote-1" data-footnote-ref/);
+  assert.match(html, /<section class="footnotes" data-footnotes(?:="")?>/);
+  assert.match(html, /<li id="footnote-1">[\s\S]*脚注内容/);
+  assert.match(html, /data-footnote-backref[^>]+aria-label="返回引用 1"/);
+  assert.doesNotMatch(html, /javascript:/i);
 });
 
 test("Markdown preview preserves Mermaid diagrams for local rendering", () => {
@@ -313,6 +329,13 @@ test("block insertion templates preserve the intended cursor selection", () => {
     mermaid.body.slice(mermaid.selectionStart, mermaid.selectionEnd),
     "graph TD\n  A[开始] --> B[完成]"
   );
+
+  assert.deepEqual(markdownFootnoteTemplate("已有引用[^2]。", "补充说明"), {
+    reference: "[^3]",
+    definition: "[^3]: 补充说明",
+    selectionStart: 6,
+    selectionEnd: 10
+  });
 });
 
 test("table editing identifies cells and preserves escaped or inline-code pipes", () => {
