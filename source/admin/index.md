@@ -120,6 +120,7 @@ comments: false
 <button type="button" role="menuitem" data-block-command="quote"><i class="fa-solid fa-quote-left"></i><span>引用</span></button>
 <span class="editor-block-separator" aria-hidden="true"></span>
 <button type="button" role="menuitem" data-block-command="code-block"><i class="fa-solid fa-code"></i><span>代码块</span></button>
+<button type="button" role="menuitem" data-block-command="mermaid"><i class="fa-solid fa-diagram-project"></i><span>流程图</span></button>
 <button type="button" role="menuitem" data-block-command="math-block"><i class="fa-solid fa-square-root-variable"></i><span>公式块</span></button>
 <button type="button" role="menuitem" data-block-command="table"><i class="fa-solid fa-table-cells"></i><span>表格</span></button>
 <button type="button" role="menuitem" data-block-command="horizontal-rule"><i class="fa-solid fa-minus"></i><span>分割线</span></button>

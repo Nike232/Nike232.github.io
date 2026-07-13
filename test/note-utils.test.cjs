@@ -149,6 +149,19 @@ test("Markdown preview renders complete GFM document structures", () => {
   assert.match(html, /<a href="\.\/guide\.md">相对链接<\/a>/);
 });
 
+test("Markdown preview preserves Mermaid diagrams for local rendering", () => {
+  const html = markdownToHtml([
+    "```mermaid",
+    "graph TD",
+    "  A[开始] --> B[完成]",
+    "```"
+  ].join("\n"));
+
+  assert.match(html, /^<pre class="tomfng-mermaid">graph TD/);
+  assert.match(html, /A\[开始\] --&gt; B\[完成\]/);
+  assert.doesNotMatch(html, /<code class="language-mermaid">/);
+});
+
 test("full Markdown rendering removes executable and unsafe HTML", () => {
   const html = markdownToHtml([
     '<script>alert("x")</script>',
@@ -276,6 +289,13 @@ test("block insertion templates preserve the intended cursor selection", () => {
   const math = markdownBlockTemplate("math-block", "E = mc^2");
   assert.equal(math.body, "$$\nE = mc^2\n$$");
   assert.equal(math.body.slice(math.selectionStart, math.selectionEnd), "E = mc^2");
+
+  const mermaid = markdownBlockTemplate("mermaid");
+  assert.match(mermaid.body, /^```mermaid\n/);
+  assert.equal(
+    mermaid.body.slice(mermaid.selectionStart, mermaid.selectionEnd),
+    "graph TD\n  A[开始] --> B[完成]"
+  );
 });
 
 test("editor view state keeps safe bounded document positions", () => {

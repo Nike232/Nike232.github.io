@@ -42,3 +42,23 @@ test('published KaTeX keeps untrusted commands inert', async () => {
   assert.match(html, /class="katex"/);
   assert.doesNotMatch(html, /href="javascript:/i);
 });
+
+test('published Hexo articles preserve Mermaid blocks for browser rendering', async () => {
+  const html = await hexo.render.render({
+    engine: 'markdown',
+    text: [
+      '```mermaid',
+      'graph TD',
+      '  A[开始] --> B[完成]',
+      '```',
+      '',
+      '```js',
+      'const answer = 42;',
+      '```'
+    ].join('\n')
+  });
+
+  assert.match(html, /^<pre class="tomfng-mermaid">graph TD/);
+  assert.match(html, /A\[开始\] --&gt; B\[完成\]/);
+  assert.match(html, /<code class="language-js">const answer = 42;/);
+});

@@ -200,6 +200,13 @@ function renderFullMarkdown(markdown) {
     const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
     return `<img src="${escapeHtml(url)}" alt="${escapeHtml(text || "")}" loading="lazy" decoding="async"${titleAttribute}>`;
   };
+  const defaultCodeRenderer = renderer.code;
+  renderer.code = function renderCode(token) {
+    if (/^\s*(?:mermaid|mmd)(?:\s|$)/i.test(String(token?.lang || ""))) {
+      return `<pre class="tomfng-mermaid">${escapeHtml(token?.text || "")}</pre>`;
+    }
+    return defaultCodeRenderer.call(this, token);
+  };
   renderer.checkbox = ({ checked }) => (
     `<span class="task-checkbox${checked ? " is-checked" : ""}" role="checkbox" aria-checked="${checked ? "true" : "false"}" aria-disabled="true"></span>`
   );
@@ -561,6 +568,12 @@ function removeTargetBlockPrefix(content, command) {
 
 function markdownBlockTemplate(command, selected = "") {
   const selection = String(selected || "");
+  if (command === "mermaid") {
+    const diagram = selection || "graph TD\n  A[开始] --> B[完成]";
+    const body = `\`\`\`mermaid\n${diagram}\n\`\`\``;
+    const start = body.indexOf(diagram);
+    return { body, selectionStart: start, selectionEnd: start + diagram.length };
+  }
   if (command === "code-block") {
     const body = selection ? `\`\`\`\n${selection}\n\`\`\`` : "```\n\n```";
     const start = body.indexOf("\n") + 1;
