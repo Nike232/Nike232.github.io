@@ -466,7 +466,7 @@ inject:
     - <script src="/vendor/dompurify/purify.min.js?v=3.4.12"></script>
     - <script src="/note-utils.js?v=20260713-typora9"></script>
     - <script src="/notes/notes.js?v=20260706-adminlock"></script>
-    - <script src="/admin/admin.js?v=20260713-typora9"></script>
+    - <script src="/admin/admin.js?v=20260714-typora11"></script>
 # INJECT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< end
 
 
