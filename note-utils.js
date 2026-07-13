@@ -252,7 +252,79 @@ function inlineMarkdown(value) {
   return html;
 }
 
+function createHtmlToMarkdown(TurndownService, gfmPlugin = {}) {
+  if (typeof TurndownService !== "function") return null;
+  const service = new TurndownService({
+    headingStyle: "atx",
+    bulletListMarker: "-",
+    codeBlockStyle: "fenced",
+    fence: "```",
+    emDelimiter: "*",
+    strongDelimiter: "**"
+  });
+
+  const plugins = [gfmPlugin.highlightedCodeBlock, gfmPlugin.taskListItems].filter((plugin) => typeof plugin === "function");
+  if (plugins.length) service.use(plugins);
+
+  service.addRule("tomfngSafeLink", {
+    filter: "a",
+    replacement(content, node) {
+      const url = safeClipboardUrl(node.getAttribute("href"), false);
+      return url && content ? `[${content}](${url})` : content;
+    }
+  });
+  service.addRule("tomfngSafeImage", {
+    filter: "img",
+    replacement(_content, node) {
+      const url = safeClipboardUrl(node.getAttribute("src"), true);
+      if (!url) return "";
+      const alt = String(node.getAttribute("alt") || "图片")
+        .replace(/([\\\[\]])/g, "\\$1")
+        .replace(/[\r\n]+/g, " ")
+        .trim() || "图片";
+      return `![${alt}](${url})`;
+    }
+  });
+  service.addRule("tomfngStrikethrough", {
+    filter: ["del", "s", "strike"],
+    replacement(content) {
+      return content ? `~~${content}~~` : "";
+    }
+  });
+  service.addRule("tomfngTable", {
+    filter: "table",
+    replacement(_content, node) {
+      return htmlTableToMarkdown(node);
+    }
+  });
+
+  return (html) => service.turndown(String(html || ""))
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function safeClipboardUrl(value, imageOnly) {
+  const url = String(value || "").trim().replace(/\s/g, "%20").replace(/\)/g, "%29");
+  if (/^https?:\/\/[^\s]+$/i.test(url) || /^\/(?!\/)[^\s]+$/.test(url)) return url;
+  if (!imageOnly && (/^mailto:[^\s]+$/i.test(url) || /^#[^\s]+$/.test(url))) return url;
+  return "";
+}
+
+function htmlTableToMarkdown(table) {
+  const rows = Array.from(table.rows || []);
+  if (!rows.length) return "";
+  const cells = rows.map((row) => Array.from(row.cells || []).map((cell) => String(cell.textContent || "")
+    .trim()
+    .replace(/\|/g, "\\|")
+    .replace(/[\r\n]+/g, "<br>")));
+  const width = Math.max(...cells.map((row) => row.length));
+  if (!width) return "";
+  const renderRow = (row) => `| ${Array.from({ length: width }, (_item, index) => row[index] || "").join(" | ")} |`;
+  return `\n\n${renderRow(cells[0])}\n${renderRow(Array(width).fill("---"))}${cells.slice(1).map((row) => `\n${renderRow(row)}`).join("")}\n\n`;
+}
+
 window.TomfngNoteTools = {
+  createHtmlToMarkdown,
   escapeHtml,
   formatDate,
   makeId,
