@@ -6,10 +6,12 @@ root.dataset.ready = "true";
 
 const {
   createHtmlToMarkdown,
+  editMarkdownTable,
   escapeHtml,
   extractMarkdownHeadings,
   filterNotesByQuery,
   formatDate,
+  getMarkdownTableContext,
   makeId,
   makeSlug,
   markdownBlockTemplate,
@@ -107,6 +109,8 @@ const state = {
   imageUploadQueue: Promise.resolve(),
   richPasteConverter: null,
   selectionToolbarFrame: null,
+  tableToolbarFrame: null,
+  tableContext: null,
   typewriterFrame: null,
   focusWriting: false,
   blockMenuOpen: false,
@@ -170,6 +174,7 @@ const elements = {
   editorSearch: root.querySelector("#editor-search"),
   toggleFocus: root.querySelector("#toggle-focus"),
   selectionToolbar: root.querySelector("#editor-selection-toolbar"),
+  tableToolbar: root.querySelector("#editor-table-toolbar"),
   blockToggle: root.querySelector("#editor-block-toggle"),
   blockMenu: root.querySelector("#editor-block-menu"),
   slashMenu: root.querySelector("#editor-slash-menu"),
@@ -261,6 +266,16 @@ function bindWorkspaceEvents() {
   elements.selectionToolbar.querySelectorAll("[data-editor-command]").forEach((button) => {
     button.addEventListener("click", () => applyMarkdownCommand(button.dataset.editorCommand));
   });
+  elements.tableToolbar.addEventListener("mousedown", (event) => event.preventDefault());
+  elements.tableToolbar.querySelectorAll("[data-table-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const value = button.dataset.tableValue || "";
+      const nextValue = button.dataset.tableAction === "align" && state.tableContext?.alignment === value
+        ? "none"
+        : value;
+      applyTableAction(button.dataset.tableAction, nextValue);
+    });
+  });
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
   fields.title.addEventListener("input", autoSizeTitleField);
   elements.previewPanel.addEventListener("toggle", () => {
@@ -298,9 +313,11 @@ function bindWorkspaceEvents() {
   window.addEventListener("resize", autoSizeTitleField);
   window.addEventListener("resize", positionBlockMenu);
   window.addEventListener("resize", positionSlashMenu);
+  window.addEventListener("resize", scheduleTableToolbar);
   window.addEventListener("scroll", () => {
     if (state.blockMenuOpen) toggleBlockMenu(false);
     if (state.slashMenuOpen) positionSlashMenu();
+    scheduleTableToolbar();
     scheduleEditorViewSave();
   }, { passive: true });
   window.addEventListener("beforeunload", flushEditorSession);
@@ -676,11 +693,13 @@ function initMarkdownEditor() {
     updateEditorStats();
     triggerTypingPulse(change);
     syncSlashMenuFromEditor({ allowOpen: isSlashTriggerChange(change) });
+    scheduleTableToolbar();
   });
   state.editor.on("cursorActivity", () => {
     updateEditorStats();
     syncEditorCursorStyle();
     scheduleSelectionToolbar();
+    scheduleTableToolbar();
     scheduleTypewriterCenter();
     updateOutlineActiveState();
     scheduleEditorViewSave();
@@ -689,10 +708,12 @@ function initMarkdownEditor() {
   state.editor.on("focus", () => {
     setEditorFocusState(true);
     scheduleSelectionToolbar();
+    scheduleTableToolbar();
   });
   state.editor.on("blur", () => {
     setEditorFocusState(false);
     hideSelectionToolbar();
+    hideTableToolbar();
     if (state.slashMenuOpen) closeSlashMenu();
   });
   state.editor.on("vim-mode-change", (_cm, event) => {
@@ -702,6 +723,7 @@ function initMarkdownEditor() {
   state.editor.on("scroll", () => {
     syncEditorCursorStyle();
     hideSelectionToolbar();
+    scheduleTableToolbar();
     if (state.blockMenuOpen) toggleBlockMenu(false);
     if (state.slashMenuOpen) closeSlashMenu();
     scheduleEditorViewSave();
@@ -975,7 +997,7 @@ function positionBlockMenu() {
   const x = Math.max(8, Math.min(window.innerWidth - width - 8, anchor.left));
   const below = anchor.bottom + 8;
   const y = below + height <= window.innerHeight - 8 ? below : Math.max(8, anchor.top - height - 8);
-  menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+  positionFloatingElement(menu, x, y);
 }
 
 function getSlashCommandCatalog() {
@@ -1143,7 +1165,23 @@ function positionSlashMenu() {
   const y = below + height <= window.innerHeight - 8
     ? below
     : Math.max(8, cursor.top - height - 9);
-  menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+  positionFloatingElement(menu, x, y);
+}
+
+function positionFloatingElement(element, viewportX, viewportY) {
+  const frame = element.closest(".main-content-body");
+  const style = frame ? window.getComputedStyle(frame) : null;
+  const contained = style && (
+    style.transform !== "none"
+    || style.filter !== "none"
+    || style.perspective !== "none"
+    || /(?:paint|layout|strict|content)/.test(style.contain)
+    || /transform|filter|perspective/.test(style.willChange)
+  );
+  const frameBox = contained ? frame.getBoundingClientRect() : { left: 0, top: 0 };
+  const x = viewportX - frameBox.left;
+  const y = viewportY - frameBox.top;
+  element.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
 }
 
 function blockShortcut(command, respectVimNormal) {
@@ -1236,11 +1274,86 @@ function syncSelectionToolbar() {
   const center = (Math.min(start.left, end.left) + Math.max(start.right, end.right)) / 2;
   const x = Math.max(8, Math.min(window.innerWidth - width - 8, center - width / 2));
   const y = Math.max(8, Math.min(start.top, end.top) - height - 10);
-  toolbar.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+  positionFloatingElement(toolbar, x, y);
 }
 
 function hideSelectionToolbar() {
   elements.selectionToolbar.hidden = true;
+}
+
+function scheduleTableToolbar() {
+  window.cancelAnimationFrame(state.tableToolbarFrame);
+  state.tableToolbarFrame = window.requestAnimationFrame(syncTableToolbar);
+}
+
+function syncTableToolbar() {
+  state.tableToolbarFrame = null;
+  const cm = state.editor;
+  if (!cm?.hasFocus?.() || state.sourceMode || cm.somethingSelected?.()) {
+    hideTableToolbar();
+    return;
+  }
+  const cursor = cm.getCursor();
+  const context = getMarkdownTableContext(cm.getValue().split("\n"), cursor);
+  if (!context) {
+    hideTableToolbar();
+    return;
+  }
+
+  state.tableContext = context;
+  const toolbar = elements.tableToolbar;
+  toolbar.hidden = false;
+  toolbar.querySelector('[data-table-action="delete-row"]').disabled = context.rowType !== "body";
+  toolbar.querySelector('[data-table-action="delete-column"]').disabled = context.columnCount <= 1;
+  toolbar.querySelectorAll('[data-table-action="align"]').forEach((button) => {
+    const active = button.dataset.tableValue === context.alignment;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+
+  const tableStart = cm.charCoords({ line: context.fromLine, ch: 0 }, "window");
+  const tableEnd = cm.charCoords({
+    line: context.toLine,
+    ch: cm.getLine(context.toLine).length
+  }, "window");
+  if (tableEnd.bottom < 0 || tableStart.top > window.innerHeight) {
+    hideTableToolbar();
+    return;
+  }
+  const width = toolbar.offsetWidth || 276;
+  const height = toolbar.offsetHeight || 40;
+  const headerBox = [...cm.getWrapperElement().querySelectorAll("pre.HyperMD-table-row-0")]
+    .map((element) => element.getBoundingClientRect())
+    .reduce((closest, box) => (
+      !closest || Math.abs(box.top - tableStart.top) < Math.abs(closest.top - tableStart.top) ? box : closest
+    ), null);
+  const visualTable = headerBox || tableStart;
+  const preferredX = Math.max(visualTable.left, visualTable.right - width);
+  const x = Math.max(8, Math.min(window.innerWidth - width - 8, preferredX));
+  const above = visualTable.top - height - 8;
+  const y = above >= 8 ? above : Math.min(window.innerHeight - height - 8, tableEnd.bottom + 8);
+  positionFloatingElement(toolbar, x, y);
+}
+
+function hideTableToolbar() {
+  state.tableContext = null;
+  elements.tableToolbar.hidden = true;
+}
+
+function applyTableAction(action, value = "") {
+  const cm = state.editor;
+  if (!cm || !requireOwnerAccess()) return;
+  const result = editMarkdownTable(cm.getValue().split("\n"), cm.getCursor(), action, value);
+  if (!result) return;
+
+  cm.operation(() => {
+    const from = { line: result.fromLine, ch: 0 };
+    const to = { line: result.toLine, ch: cm.getLine(result.toLine).length };
+    cm.replaceRange(result.lines.join("\n"), from, to, "+table-edit");
+    cm.setCursor(result.cursor);
+  });
+  cm.focus();
+  scheduleTableToolbar();
 }
 
 function toggleFocusWriting(force) {
@@ -2401,6 +2514,7 @@ function flushEditorSession() {
 function setEditorEnabled(enabled) {
   if (!state.editor) return;
   state.editor.setOption("readOnly", enabled ? false : "nocursor");
+  if (!enabled) hideTableToolbar();
 }
 
 function toggleEditorMode() {
@@ -2440,6 +2554,7 @@ function toggleSourceMode(force) {
     cm.refresh();
     cm.focus();
   }
+  scheduleTableToolbar();
   updateEditorStats();
 }
 
