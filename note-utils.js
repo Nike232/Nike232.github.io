@@ -363,6 +363,80 @@ function cleanHeadingText(value) {
     .trim();
 }
 
+function stripMarkdownBlockPrefix(line) {
+  const value = String(line || "");
+  const indent = /^\s*/.exec(value)?.[0] || "";
+  const content = value.slice(indent.length)
+    .replace(/^#{1,6}\s+/, "")
+    .replace(/^>\s+/, "")
+    .replace(/^(?:[-+*]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+)/, "");
+  return `${indent}${content}`;
+}
+
+function transformMarkdownBlockLines(lines, command) {
+  const values = Array.from(lines || [], (line) => String(line || ""));
+  const meaningful = values.filter((line) => line.trim());
+  const allTarget = meaningful.length > 0 && meaningful.every((line) => lineMatchesBlockCommand(line, command));
+  let order = 0;
+  return values.map((line) => {
+    if (!line.trim() && values.length > 1) return line;
+    if (line.trim()) order += 1;
+    const indent = /^\s*/.exec(line)?.[0] || "";
+    const rawContent = line.slice(indent.length);
+    const content = allTarget
+      ? removeTargetBlockPrefix(rawContent, command)
+      : stripMarkdownBlockPrefix(line).trimStart();
+    const prefix = allTarget ? "" : markdownBlockPrefix(command, Math.max(0, order - 1));
+    return `${indent}${prefix}${content}`;
+  });
+}
+
+function lineMatchesBlockCommand(line, command) {
+  const content = String(line || "").trimStart();
+  if (command === "bullet-list") return /^[-+*]\s+(?!\[[ xX]\]\s+)/.test(content);
+  if (command === "ordered-list") return /^\d+[.)]\s+/.test(content);
+  if (command === "task-list") return /^[-+*]\s+\[[ xX]\]\s+/.test(content);
+  if (command === "quote") return /^>\s+/.test(content);
+  return false;
+}
+
+function markdownBlockPrefix(command, index) {
+  if (command === "bullet-list") return "- ";
+  if (command === "ordered-list") return `${index + 1}. `;
+  if (command === "task-list") return "- [ ] ";
+  if (command === "quote") return "> ";
+  return "";
+}
+
+function removeTargetBlockPrefix(content, command) {
+  if (command === "bullet-list") return content.replace(/^[-+*]\s+/, "");
+  if (command === "ordered-list") return content.replace(/^\d+[.)]\s+/, "");
+  if (command === "task-list") return content.replace(/^[-+*]\s+\[[ xX]\]\s+/, "");
+  if (command === "quote") return content.replace(/^>\s+/, "");
+  return content;
+}
+
+function markdownBlockTemplate(command, selected = "") {
+  const selection = String(selected || "");
+  if (command === "code-block") {
+    const body = selection ? `\`\`\`\n${selection}\n\`\`\`` : "```\n\n```";
+    const start = body.indexOf("\n") + 1;
+    return { body, selectionStart: start, selectionEnd: start + selection.length };
+  }
+  if (command === "table") {
+    const body = [
+      "| 列 1 | 列 2 | 列 3 |",
+      "| --- | --- | --- |",
+      "|     |     |     |",
+      "|     |     |     |"
+    ].join("\n");
+    const start = body.indexOf("列 1");
+    return { body, selectionStart: start, selectionEnd: start + "列 1".length };
+  }
+  if (command === "horizontal-rule") return { body: "---", selectionStart: 3, selectionEnd: 3 };
+  return null;
+}
+
 window.TomfngNoteTools = {
   createHtmlToMarkdown,
   escapeHtml,
@@ -371,11 +445,14 @@ window.TomfngNoteTools = {
   makeId,
   makeSlug,
   markdownToHtml,
+  markdownBlockTemplate,
   mergeRemotePosts,
   noteContentFingerprint,
   normalizeCategory,
   normalizeNote,
   normalizeNotesData,
-  normalizeTags
+  normalizeTags,
+  stripMarkdownBlockPrefix,
+  transformMarkdownBlockLines
 };
 }());

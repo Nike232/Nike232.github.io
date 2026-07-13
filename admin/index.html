@@ -141,7 +141,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://tomfng.space/images/redefine-og.webp">
 <meta property="article:published_time" content="2026-07-05T17:10:00.000Z">
-<meta property="article:modified_time" content="2026-07-13T10:32:18.555Z">
+<meta property="article:modified_time" content="2026-07-13T11:11:06.536Z">
 <meta property="article:author" content="Tomfng">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="http://tomfng.space/images/redefine-og.webp">
@@ -193,7 +193,7 @@
     
             
                 
-                    <link rel="stylesheet" href="/note-tools.css?v=20260713-typora3">
+                    <link rel="stylesheet" href="/note-tools.css?v=20260713-typora4">
                 
     
 
@@ -856,7 +856,10 @@
 </label>
 <div class="field field-wide editor-field">
 <div class="editor-head">
+<div class="editor-head-title">
 <span>正文</span>
+<button class="editor-block-add" id="editor-block-toggle" type="button" aria-expanded="false" aria-controls="editor-block-menu" title="插入内容" aria-label="插入内容"><i class="fa-solid fa-plus"></i></button>
+</div>
 <div class="editor-controls">
 <button class="ghost-button editor-toggle" id="toggle-vim" type="button" aria-pressed="false"><i class="fa-regular fa-keyboard"></i><span>Vim</span></button>
 <button class="ghost-button editor-icon-button" id="toggle-source" type="button" aria-pressed="false" title="Markdown 源码" aria-label="切换 Markdown 源码"><i class="fa-solid fa-code"></i></button>
@@ -867,6 +870,23 @@
 <span class="editor-stat" id="editor-words">0 字</span>
 </div>
 </div>
+<div class="editor-block-menu" id="editor-block-menu" role="menu" aria-label="插入内容" hidden>
+<button type="button" role="menuitem" data-block-command="paragraph"><i class="fa-solid fa-paragraph"></i><span>正文</span></button>
+<button type="button" role="menuitem" data-block-command="heading-1"><strong>H1</strong><span>标题 1</span></button>
+<button type="button" role="menuitem" data-block-command="heading-2"><strong>H2</strong><span>标题 2</span></button>
+<button type="button" role="menuitem" data-block-command="heading-3"><strong>H3</strong><span>标题 3</span></button>
+<span class="editor-block-separator" aria-hidden="true"></span>
+<button type="button" role="menuitem" data-block-command="bullet-list"><i class="fa-solid fa-list-ul"></i><span>无序列表</span></button>
+<button type="button" role="menuitem" data-block-command="ordered-list"><i class="fa-solid fa-list-ol"></i><span>有序列表</span></button>
+<button type="button" role="menuitem" data-block-command="task-list"><i class="fa-regular fa-square-check"></i><span>待办事项</span></button>
+<button type="button" role="menuitem" data-block-command="quote"><i class="fa-solid fa-quote-left"></i><span>引用</span></button>
+<span class="editor-block-separator" aria-hidden="true"></span>
+<button type="button" role="menuitem" data-block-command="code-block"><i class="fa-solid fa-code"></i><span>代码块</span></button>
+<button type="button" role="menuitem" data-block-command="table"><i class="fa-solid fa-table-cells"></i><span>表格</span></button>
+<button type="button" role="menuitem" data-block-command="horizontal-rule"><i class="fa-solid fa-minus"></i><span>分割线</span></button>
+<button type="button" role="menuitem" data-block-command="image"><i class="fa-regular fa-image"></i><span>图片</span></button>
+</div>
+<input id="editor-image-picker" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
 <div class="editor-selection-toolbar" id="editor-selection-toolbar" role="toolbar" aria-label="文本格式" hidden>
 <button type="button" data-editor-command="bold" title="加粗" aria-label="加粗"><strong>B</strong></button>
 <button type="button" data-editor-command="italic" title="斜体" aria-label="斜体"><em>I</em></button>
@@ -1080,7 +1100,7 @@
                 
 
                     
-                        <script data-swup-reload-script src="/note-utils.js?v=20260713-typora3"></script>
+                        <script data-swup-reload-script src="/note-utils.js?v=20260713-typora4"></script>
                     
         
                 
@@ -1092,7 +1112,7 @@
                 
 
                     
-                        <script data-swup-reload-script src="/admin/admin.js?v=20260713-typora3"></script>
+                        <script data-swup-reload-script src="/admin/admin.js?v=20260713-typora4"></script>
                     
         
         

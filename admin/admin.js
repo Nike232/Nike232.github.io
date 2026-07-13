@@ -11,13 +11,16 @@ const {
   formatDate,
   makeId,
   makeSlug,
+  markdownBlockTemplate,
   markdownToHtml,
   mergeRemotePosts,
   noteContentFingerprint,
   normalizeCategory,
   normalizeNote,
   normalizeNotesData,
-  normalizeTags
+  normalizeTags,
+  stripMarkdownBlockPrefix,
+  transformMarkdownBlockLines
 } = tools;
 
 const STORAGE_KEY = "tomfng-notes-workspace";
@@ -60,6 +63,7 @@ const state = {
   selectionToolbarFrame: null,
   typewriterFrame: null,
   focusWriting: false,
+  blockMenuOpen: false,
   autosaveStatus: "saved",
   syncingEditor: false,
   publishPollId: 0
@@ -112,6 +116,9 @@ const elements = {
   editorSearch: root.querySelector("#editor-search"),
   toggleFocus: root.querySelector("#toggle-focus"),
   selectionToolbar: root.querySelector("#editor-selection-toolbar"),
+  blockToggle: root.querySelector("#editor-block-toggle"),
+  blockMenu: root.querySelector("#editor-block-menu"),
+  imagePicker: root.querySelector("#editor-image-picker"),
   editorMode: root.querySelector("#editor-mode"),
   editorPosition: root.querySelector("#editor-position"),
   editorWords: root.querySelector("#editor-words"),
@@ -165,6 +172,15 @@ function bindWorkspaceEvents() {
   elements.toggleSource.addEventListener("click", () => toggleSourceMode());
   elements.editorSearch.addEventListener("click", openEditorSearch);
   elements.toggleFocus.addEventListener("click", () => toggleFocusWriting());
+  elements.blockToggle.addEventListener("click", () => toggleBlockMenu());
+  elements.blockMenu.querySelectorAll("[data-block-command]").forEach((button) => {
+    button.addEventListener("click", () => applyBlockCommand(button.dataset.blockCommand));
+  });
+  elements.imagePicker.addEventListener("change", () => {
+    const files = [...(elements.imagePicker.files || [])];
+    elements.imagePicker.value = "";
+    if (files.length) insertImageUploads(files);
+  });
   elements.sidebarPages.addEventListener("click", () => setSidebarMode("pages"));
   elements.sidebarOutline.addEventListener("click", () => setSidebarMode("outline"));
   elements.selectionToolbar.addEventListener("mousedown", (event) => event.preventDefault());
@@ -175,9 +191,23 @@ function bindWorkspaceEvents() {
   fields.title.addEventListener("input", autoSizeTitleField);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && state.focusWriting) toggleFocusWriting(false);
+    if (event.key !== "Escape") return;
+    if (state.blockMenuOpen) {
+      toggleBlockMenu(false);
+      return;
+    }
+    if (state.focusWriting) toggleFocusWriting(false);
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (!state.blockMenuOpen) return;
+    if (elements.blockMenu.contains(event.target) || elements.blockToggle.contains(event.target)) return;
+    toggleBlockMenu(false);
   });
   window.addEventListener("resize", autoSizeTitleField);
+  window.addEventListener("resize", positionBlockMenu);
+  window.addEventListener("scroll", () => {
+    if (state.blockMenuOpen) toggleBlockMenu(false);
+  }, { passive: true });
   window.addEventListener("beforeunload", flushAutosave);
 }
 
@@ -355,6 +385,12 @@ function initMarkdownEditor() {
       "Cmd-F": searchShortcut("findPersistent", false),
       "Ctrl-H": searchShortcut("replace", true),
       "Cmd-Alt-F": searchShortcut("replace", false),
+      "Ctrl-Shift-7": blockShortcut("ordered-list", true),
+      "Cmd-Shift-7": blockShortcut("ordered-list", false),
+      "Ctrl-Shift-8": blockShortcut("bullet-list", true),
+      "Cmd-Shift-8": blockShortcut("bullet-list", false),
+      "Ctrl-Shift-9": blockShortcut("quote", true),
+      "Cmd-Shift-9": blockShortcut("quote", false),
       F9: () => toggleFocusWriting()
     }
   };
@@ -394,6 +430,7 @@ function initMarkdownEditor() {
   state.editor.on("scroll", () => {
     syncEditorCursorStyle();
     hideSelectionToolbar();
+    if (state.blockMenuOpen) toggleBlockMenu(false);
   });
   syncEditorCursorStyle();
   setEditorFocusState(state.editor.hasFocus?.());
@@ -485,8 +522,10 @@ function applyMarkdownCommand(command, cm = state.editor) {
   };
 
   cm.operation(() => {
-    if (command.startsWith("heading-") || command === "paragraph") {
-      applyHeadingCommand(cm, command === "paragraph" ? 0 : Number(command.slice(-1)));
+    if (command.startsWith("heading-")) {
+      applyHeadingCommand(cm, Number(command.slice(-1)));
+    } else if (command === "paragraph") {
+      applyParagraphCommand(cm);
     } else if (command === "link") {
       applyLinkCommand(cm);
     } else if (marks[command]) {
@@ -576,10 +615,123 @@ function applyHeadingCommand(cm, level) {
   const lastLine = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line;
   for (let lineNumber = lastLine; lineNumber >= from.line; lineNumber -= 1) {
     const line = cm.getLine(lineNumber);
-    const content = line.replace(/^ {0,3}#{1,6}\s+/, "");
-    const next = `${level ? `${"#".repeat(level)} ` : ""}${content}`;
+    const cleaned = stripMarkdownBlockPrefix(line);
+    const indent = /^\s*/.exec(cleaned)?.[0] || "";
+    const content = cleaned.slice(indent.length);
+    const next = `${indent}${level ? `${"#".repeat(level)} ` : ""}${content}`;
     cm.replaceRange(next, { line: lineNumber, ch: 0 }, { line: lineNumber, ch: line.length }, "+format");
   }
+}
+
+function applyParagraphCommand(cm) {
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const lastLine = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line;
+  for (let lineNumber = lastLine; lineNumber >= from.line; lineNumber -= 1) {
+    const line = cm.getLine(lineNumber);
+    const next = stripMarkdownBlockPrefix(line);
+    cm.replaceRange(next, { line: lineNumber, ch: 0 }, { line: lineNumber, ch: line.length }, "+format");
+  }
+}
+
+function applyBlockCommand(command, cm = state.editor) {
+  if (!cm || !requireOwnerAccess()) return;
+  toggleBlockMenu(false);
+  if (command === "image") {
+    elements.imagePicker.click();
+    return;
+  }
+
+  cm.operation(() => {
+    if (command.startsWith("heading-")) {
+      applyHeadingCommand(cm, Number(command.slice(-1)));
+    } else if (command === "paragraph") {
+      applyParagraphCommand(cm);
+    } else if (["bullet-list", "ordered-list", "task-list", "quote"].includes(command)) {
+      applyLinePrefixCommand(cm, command);
+    } else if (command === "code-block") {
+      insertCodeBlock(cm);
+    } else if (command === "table") {
+      insertTableBlock(cm);
+    } else if (command === "horizontal-rule") {
+      const template = markdownBlockTemplate("horizontal-rule");
+      insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
+    }
+  });
+  cm.focus();
+}
+
+function toggleBlockMenu(force) {
+  const open = typeof force === "boolean" ? force : !state.blockMenuOpen;
+  state.blockMenuOpen = Boolean(open && getSelectedNote() && !state.busy);
+  elements.blockMenu.hidden = !state.blockMenuOpen;
+  elements.blockToggle.classList.toggle("is-active", state.blockMenuOpen);
+  elements.blockToggle.setAttribute("aria-expanded", state.blockMenuOpen ? "true" : "false");
+  if (state.blockMenuOpen) positionBlockMenu();
+}
+
+function positionBlockMenu() {
+  if (!state.blockMenuOpen) return;
+  const anchor = elements.blockToggle.getBoundingClientRect();
+  const menu = elements.blockMenu;
+  const width = menu.offsetWidth || 300;
+  const height = menu.offsetHeight || 224;
+  const x = Math.max(8, Math.min(window.innerWidth - width - 8, anchor.left));
+  const below = anchor.bottom + 8;
+  const y = below + height <= window.innerHeight - 8 ? below : Math.max(8, anchor.top - height - 8);
+  menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+}
+
+function blockShortcut(command, respectVimNormal) {
+  return (cm) => {
+    const vim = state.editorMode === "vim" ? cm.state?.vim : null;
+    if (respectVimNormal && vim && !vim.insertMode && !vim.visualMode) return window.CodeMirror.Pass;
+    applyBlockCommand(command, cm);
+    return undefined;
+  };
+}
+
+function applyLinePrefixCommand(cm, command) {
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const lastLine = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line;
+  const lines = [];
+  for (let lineNumber = from.line; lineNumber <= lastLine; lineNumber += 1) {
+    lines.push({ lineNumber, text: cm.getLine(lineNumber) });
+  }
+  const transformed = transformMarkdownBlockLines(lines.map((item) => item.text), command);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const item = lines[index];
+    const next = transformed[index];
+    if (next === item.text) continue;
+    cm.replaceRange(next, { line: item.lineNumber, ch: 0 }, { line: item.lineNumber, ch: item.text.length }, "+format");
+  }
+}
+
+function insertCodeBlock(cm) {
+  const template = markdownBlockTemplate("code-block", cm.getSelection());
+  insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
+}
+
+function insertTableBlock(cm) {
+  const template = markdownBlockTemplate("table");
+  insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
+}
+
+function insertStandaloneBlock(cm, body, selectionStart = body.length, selectionEnd = selectionStart) {
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const before = cm.getRange({ line: from.line, ch: 0 }, from);
+  const after = cm.getRange(to, { line: to.line, ch: cm.getLine(to.line).length });
+  const prefix = before.trim() ? "\n\n" : "";
+  const suffix = after.trim() ? "\n\n" : "\n";
+  const startIndex = cm.indexFromPos(from);
+  cm.replaceRange(`${prefix}${body}${suffix}`, from, to, "+format");
+  cm.setSelection(
+    cm.posFromIndex(startIndex + prefix.length + selectionStart),
+    cm.posFromIndex(startIndex + prefix.length + selectionEnd)
+  );
 }
 
 function scheduleSelectionToolbar() {
@@ -1481,8 +1633,10 @@ function renderEditor() {
   elements.toggleFocus.disabled = disabled;
   elements.toggleSource.disabled = disabled;
   elements.editorSearch.disabled = disabled;
+  elements.blockToggle.disabled = disabled;
 
   if (!note) {
+    if (state.blockMenuOpen) toggleBlockMenu(false);
     if (state.focusWriting) toggleFocusWriting(false);
     if (state.sourceMode) toggleSourceMode(false);
     fields.title.value = "";
@@ -1759,6 +1913,7 @@ function setBusy(value) {
     elements.toggleVim,
     elements.toggleSource,
     elements.editorSearch,
+    elements.blockToggle,
     elements.toggleFocus
   ].forEach((button) => {
     button.disabled = value;
@@ -1769,6 +1924,7 @@ function setBusy(value) {
   elements.toggleFocus.disabled = value || !note;
   elements.toggleSource.disabled = value || !note;
   elements.editorSearch.disabled = value || !note;
+  elements.blockToggle.disabled = value || !note;
   Object.values(fields).forEach((field) => {
     field.disabled = value || !note;
   });
