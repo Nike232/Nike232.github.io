@@ -585,6 +585,81 @@
   background: var(--note-line);
 }
 
+.editor-slash-menu {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 2320 !important;
+  display: grid;
+  gap: 2px;
+  width: min(312px, calc(100vw - 16px));
+  max-height: min(360px, calc(100dvh - 16px));
+  padding: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  border-radius: 6px;
+  color: var(--note-text);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 14px 36px rgba(47, 45, 41, 0.16), 0 2px 5px rgba(47, 45, 41, 0.07);
+  scrollbar-color: #d8d8d5 transparent;
+  scrollbar-width: thin;
+  backdrop-filter: blur(14px);
+}
+
+.editor-slash-menu[hidden] {
+  display: none;
+}
+
+.editor-slash-menu button {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 9px;
+  overflow: hidden;
+  border-radius: 4px;
+  color: var(--note-muted);
+  background: transparent;
+  font-family: var(--note-sans);
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.editor-slash-menu button:hover,
+.editor-slash-menu button.is-active {
+  color: var(--note-text);
+  background: var(--note-sidebar-hover);
+}
+
+.editor-slash-menu button:active {
+  transform: translateY(1px) scale(0.985);
+}
+
+.editor-slash-menu button > i,
+.editor-slash-menu button > strong {
+  width: 22px;
+  color: #85827b;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.editor-slash-menu button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-slash-empty {
+  display: grid;
+  min-height: 54px;
+  place-items: center;
+  color: var(--note-faint);
+  font-size: 0.78rem;
+}
+
 .editor-controls {
   display: flex;
   flex-wrap: wrap;
@@ -2320,6 +2395,10 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   }
 
   .editor-block-menu button {
+    min-height: 44px;
+  }
+
+  .editor-slash-menu button {
     min-height: 44px;
   }
 

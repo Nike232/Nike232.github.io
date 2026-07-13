@@ -402,6 +402,19 @@ function nonNegativeNumber(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function parseMarkdownSlashContext(line, cursorCh) {
+  const value = String(line || "");
+  const cursor = Math.min(value.length, Math.max(0, Math.floor(Number(cursorCh) || 0)));
+  if (value.slice(cursor).trim()) return null;
+  const match = /^( {0,3})\/([^/\n]*)$/.exec(value.slice(0, cursor));
+  if (!match) return null;
+  return {
+    fromCh: match[1].length,
+    toCh: cursor,
+    query: match[2].trim()
+  };
+}
+
 function stripMarkdownBlockPrefix(line) {
   const value = String(line || "");
   const indent = /^\s*/.exec(value)?.[0] || "";
@@ -492,6 +505,7 @@ window.TomfngNoteTools = {
   normalizeNote,
   normalizeNotesData,
   normalizeTags,
+  parseMarkdownSlashContext,
   stripMarkdownBlockPrefix,
   transformMarkdownBlockLines
 };
