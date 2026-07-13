@@ -39,6 +39,10 @@ comments: false
 <button class="ghost-button" id="duplicate-note" type="button"><i class="fa-regular fa-copy"></i><span>复制</span></button>
 <button class="danger-button" id="delete-note" type="button"><i class="fa-regular fa-trash-can"></i><span>删除</span></button>
 </div>
+<label class="admin-note-search" id="admin-note-search-wrap">
+<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+<input id="admin-note-search" type="search" autocomplete="off" placeholder="搜索页面" aria-label="搜索页面">
+</label>
 <div class="category-strip" id="admin-category-strip" aria-label="分类"></div>
 <div class="admin-list" id="admin-list" aria-live="polite"></div>
 <div class="admin-outline" id="admin-outline" aria-live="polite" hidden></div>

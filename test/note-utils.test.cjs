@@ -10,6 +10,7 @@ const turndownPluginGfm = require("turndown-plugin-gfm");
 const {
   createHtmlToMarkdown,
   extractMarkdownHeadings,
+  filterNotesByQuery,
   markdownBlockTemplate,
   markdownToHtml,
   mergeRemotePosts,
@@ -176,6 +177,19 @@ test("slash commands only open at a Markdown block boundary", () => {
   assert.equal(parseMarkdownSlashContext("    /代码", 7), null);
   assert.equal(parseMarkdownSlashContext("/标题 后文", 3), null);
   assert.equal(parseMarkdownSlashContext("https://example.com", 8), null);
+});
+
+test("page search matches every term across note metadata and content", () => {
+  const notes = [
+    { id: "a", title: "无线网络", category: "研究", tags: ["WiFi"], summary: "速率控制", content: "实验结果" },
+    { id: "b", title: "读书笔记", category: "阅读", tags: ["经济学"], summary: "", content: "市场价格" },
+    { id: "c", title: "写作草稿", category: "研究", tags: ["想法"], summary: "网络协议", content: "待验证" }
+  ];
+
+  assert.deepEqual(filterNotesByQuery(notes, "研究 网络").map((note) => note.id), ["a", "c"]);
+  assert.deepEqual(filterNotesByQuery(notes, "wifi 结果").map((note) => note.id), ["a"]);
+  assert.deepEqual(filterNotesByQuery(notes, "经济学").map((note) => note.id), ["b"]);
+  assert.deepEqual(filterNotesByQuery(notes, ""), notes);
 });
 
 test("block insertion templates preserve the intended cursor selection", () => {

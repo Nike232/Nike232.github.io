@@ -402,6 +402,26 @@ function nonNegativeNumber(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function filterNotesByQuery(notes, query) {
+  const terms = String(query || "")
+    .toLocaleLowerCase("zh-CN")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const values = Array.from(notes || []);
+  if (!terms.length) return values;
+  return values.filter((note) => {
+    const haystack = [
+      note?.title,
+      note?.category,
+      ...(Array.isArray(note?.tags) ? note.tags : []),
+      note?.summary,
+      note?.content
+    ].map((value) => String(value || "").toLocaleLowerCase("zh-CN")).join("\n");
+    return terms.every((term) => haystack.includes(term));
+  });
+}
+
 function parseMarkdownSlashContext(line, cursorCh) {
   const value = String(line || "");
   const cursor = Math.min(value.length, Math.max(0, Math.floor(Number(cursorCh) || 0)));
@@ -493,6 +513,7 @@ window.TomfngNoteTools = {
   createHtmlToMarkdown,
   escapeHtml,
   extractMarkdownHeadings,
+  filterNotesByQuery,
   formatDate,
   makeId,
   makeSlug,
