@@ -43,10 +43,15 @@ function normalizeNote(note = {}) {
     category: normalizeCategory(note.category),
     summary: String(note.summary || "").trim(),
     tags: normalizeTags(note.tags),
-    status: note.status === "archived" ? "archived" : note.status === "draft" ? "draft" : "published",
+    status: note.status === "published" ? "published" : "draft",
     content: String(note.content || ""),
     createdAt: note.createdAt || now,
-    updatedAt: note.updatedAt || now
+    updatedAt: note.updatedAt || now,
+    remotePath: String(note.remotePath || ""),
+    remoteSha: String(note.remoteSha || ""),
+    localDirty: Boolean(note.localDirty),
+    parseError: String(note.parseError || ""),
+    frontMatter: note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {}
   };
 }
 
@@ -78,6 +83,78 @@ function makeSlug(value = "") {
     .replace(/[^\p{L}\p{N}]+/gu, "-")
     .replace(/^-+|-+$/g, "");
   return cleaned || `note-${Date.now().toString(36)}`;
+}
+
+function noteContentFingerprint(note) {
+  return JSON.stringify({
+    title: String(note?.title || "").trim(),
+    slug: String(note?.slug || "").trim(),
+    category: normalizeCategory(note?.category),
+    tags: normalizeTags(note?.tags),
+    summary: String(note?.summary || "").trim(),
+    content: String(note?.content || "").replace(/\r\n/g, "\n").trim()
+  });
+}
+
+function mergeRemotePosts(localData, remoteData) {
+  const localNotes = normalizeNotesData(localData || { notes: [] }).notes;
+  const remoteNotes = normalizeNotesData(remoteData || { notes: [] }).notes.map((note) => ({
+    ...note,
+    status: "published",
+    localDirty: false
+  }));
+  const remoteByPath = new Map(remoteNotes.filter((note) => note.remotePath).map((note) => [note.remotePath, note]));
+  const remoteBySlug = new Map(remoteNotes.map((note) => [String(note.slug || "").toLowerCase(), note]));
+  const consumed = new Set();
+  const merged = [];
+  let preserved = 0;
+
+  localNotes.forEach((local) => {
+    const remote = (local.remotePath && remoteByPath.get(local.remotePath))
+      || (local.status === "published" && remoteBySlug.get(String(local.slug || "").toLowerCase()));
+    if (remote) {
+      consumed.add(remote.remotePath || remote.id);
+      const same = noteContentFingerprint(local) === noteContentFingerprint(remote);
+      const keepLocal = !same && (local.localDirty || !local.remoteSha);
+      if (keepLocal) {
+        preserved += 1;
+        merged.push(normalizeNote({
+          ...local,
+          status: "published",
+          remotePath: remote.remotePath,
+          remoteSha: local.remoteSha || remote.remoteSha,
+          localDirty: true
+        }));
+      } else {
+        merged.push(remote);
+      }
+      return;
+    }
+
+    if (local.remotePath) {
+      if (local.localDirty) {
+        preserved += 1;
+        merged.push(normalizeNote({
+          ...local,
+          status: "draft",
+          remotePath: "",
+          remoteSha: "",
+          localDirty: true
+        }));
+      }
+      return;
+    }
+    merged.push(local);
+  });
+
+  remoteNotes.forEach((remote) => {
+    if (!consumed.has(remote.remotePath || remote.id)) merged.push(remote);
+  });
+
+  return {
+    preserved,
+    data: normalizeNotesData({ version: 2, updatedAt: new Date().toISOString(), notes: merged })
+  };
 }
 
 function markdownToHtml(markdown = "") {
@@ -170,6 +247,8 @@ window.TomfngNoteTools = {
   makeId,
   makeSlug,
   markdownToHtml,
+  mergeRemotePosts,
+  noteContentFingerprint,
   normalizeCategory,
   normalizeNote,
   normalizeNotesData,

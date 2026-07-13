@@ -1,8 +1,10 @@
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+
 const SESSION_COOKIE = "tomfng_admin_session";
 const STATE_COOKIE = "tomfng_oauth_state";
 const SESSION_TTL = 60 * 60 * 24 * 14;
 const STATE_TTL = 60 * 10;
-const NOTES_PATHS = ["source/notes-data.json", "notes-data.json"];
+const REVISION_MARKER = "tomfng-admin-revision";
 
 export default {
   async fetch(request, env) {
@@ -19,7 +21,10 @@ export default {
         return await finishGithubAuth(request, env);
       }
       if (url.pathname === "/api/logout" && request.method === "POST") return await logout(request, env);
-      if (url.pathname === "/api/notes-data" && request.method === "GET") return await notesData(request, env);
+      if ((url.pathname === "/api/posts" || url.pathname === "/api/notes-data") && request.method === "GET") {
+        return await postsData(request, env);
+      }
+      if (url.pathname === "/api/posts" && request.method === "DELETE") return await deletePost(request, env);
       if (url.pathname === "/api/publish" && request.method === "POST") return await publish(request, env);
       if (url.pathname === "/api/publish-status" && request.method === "GET") return await publishStatus(request, env);
 
@@ -121,19 +126,32 @@ async function logout(request, env) {
   });
 }
 
-async function notesData(request, env) {
+async function postsData(request, env) {
   await requireAdmin(request, env);
-  let lastError = null;
-  for (const path of NOTES_PATHS) {
-    try {
-      const file = await githubGetContent(path, env);
-      return json({ path, data: JSON.parse(decodeBase64(file.content || "")) }, 200, request, env);
-    } catch (error) {
-      lastError = error;
-      if (error.status !== 404) throw error;
-    }
+  const directory = normalizePostDirectory(env.POST_DIR || "source/_posts");
+  let entries = [];
+  try {
+    entries = await githubGetContent(directory, env);
+  } catch (error) {
+    if (error.status !== 404) throw error;
   }
-  throw lastError || new HttpError(404, "未找到远程笔记库");
+  if (!Array.isArray(entries)) throw new HttpError(500, "文章目录不是有效的 GitHub 目录");
+
+  const files = entries.filter((entry) => entry.type === "file" && /\.md$/i.test(entry.name || ""));
+  const notes = await mapLimit(files, 6, async (entry) => {
+    const file = await githubGetContent(entry.path, env);
+    return parseHexoPost(decodeBase64(file.content || ""), entry.path, file.sha, env);
+  });
+  notes.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
+
+  return json({
+    path: directory,
+    data: {
+      version: 2,
+      updatedAt: new Date().toISOString(),
+      notes
+    }
+  }, 200, request, env);
 }
 
 async function publish(request, env) {
@@ -150,21 +168,43 @@ async function publish(request, env) {
     throw new HttpError(400, `目标分支 ${githubBranch(env)} 缺少 _config.yml，请把 Worker 指向 Hexo 源码分支`);
   }
 
-  const path = postFilePath(note, env);
-  let sha = null;
-  try {
-    sha = (await githubGetContent(path, env)).sha;
-  } catch (error) {
-    if (error.status !== 404) throw error;
-  }
+  const target = await resolvePostTarget(note, env);
+  const revision = randomRevision();
+  const content = buildHexoPost(note, env, revision);
 
-  const result = await githubPutContent(path, buildHexoPost(note, env), `${sha ? "Update" : "Publish"} post: ${note.title}`, sha, env);
+  const result = await githubPutContent(
+    target.path,
+    content,
+    `${target.sha ? "Update" : "Publish"} post: ${note.title}`,
+    target.sha,
+    env
+  );
   return json({
     ok: true,
-    path,
-    publicUrl: publicPostUrl(note, env),
+    path: target.path,
+    slug: target.slug,
+    sha: result.content?.sha || null,
+    revision,
+    publicUrl: publicPostUrl(note, env, target.slug),
     commit: result.commit?.sha || null
   }, 200, request, env);
+}
+
+async function deletePost(request, env) {
+  await requireAdmin(request, env);
+  requireAllowedOrigin(request, env);
+
+  const body = await request.json().catch(() => null);
+  const path = safePostPath(body?.path, env);
+  let file = null;
+  try {
+    file = await githubGetContent(path, env);
+  } catch (error) {
+    if (error.status === 404) return json({ ok: true, path, alreadyDeleted: true }, 200, request, env);
+    throw error;
+  }
+  const result = await githubDeleteContent(path, `Delete post: ${body?.title || postSlugFromPath(path)}`, file.sha, env);
+  return json({ ok: true, path, commit: result.commit?.sha || null }, 200, request, env);
 }
 
 async function publishStatus(request, env) {
@@ -174,6 +214,7 @@ async function publishStatus(request, env) {
   const url = new URL(request.url);
   const publicUrl = safePublicUrl(url.searchParams.get("url"), env);
   const title = String(url.searchParams.get("title") || "").trim();
+  const revision = String(url.searchParams.get("revision") || "").trim();
   const checkUrl = new URL(publicUrl);
   checkUrl.searchParams.set("_publish_check", Date.now().toString(36));
 
@@ -186,7 +227,9 @@ async function publishStatus(request, env) {
   });
   const text = response.ok ? await response.text() : "";
   return json({
-    ready: response.ok && (!title || text.includes(title)),
+    ready: response.ok && (revision
+      ? text.includes(`<!-- ${REVISION_MARKER}:${revision} -->`)
+      : (!title || text.includes(title))),
     status: response.status,
     url: publicUrl
   }, 200, request, env);
@@ -254,6 +297,17 @@ async function githubPutContent(path, content, message, sha, env) {
   }, env);
 }
 
+async function githubDeleteContent(path, message, sha, env) {
+  return githubFetch(githubContentsUrl(path, env), {
+    method: "DELETE",
+    body: JSON.stringify({
+      message,
+      sha,
+      branch: githubBranch(env)
+    })
+  }, env);
+}
+
 async function githubFetch(url, options = {}, env = {}) {
   const response = await fetch(url, {
     ...options,
@@ -267,7 +321,12 @@ async function githubFetch(url, options = {}, env = {}) {
     }
   });
   const text = await response.text();
-  const payload = text ? JSON.parse(text) : {};
+  let payload = {};
+  try {
+    payload = text ? JSON.parse(text) : {};
+  } catch {
+    payload = { message: text.slice(0, 240) || response.statusText };
+  }
   if (!response.ok) {
     throw new HttpError(response.status, payload.message || response.statusText);
   }
@@ -285,38 +344,88 @@ function githubBranch(env) {
   return env.GITHUB_BRANCH || "main";
 }
 
-function postFilePath(note, env) {
+function postFilePath(note, env, slugOverride = "") {
   const dir = normalizePostDirectory(env.POST_DIR || "source/_posts");
-  const slug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
+  const slug = normalizePostSlug(slugOverride || note.slug || makeSlug(note.title), note.title);
   return dir ? `${dir}/${slug}.md` : `${slug}.md`;
 }
 
-function publicPostUrl(note, env) {
+async function resolvePostTarget(note, env) {
+  if (note.remotePath) {
+    const path = safePostPath(note.remotePath, env);
+    try {
+      const file = await githubGetContent(path, env);
+      if (note.remoteSha && file.sha !== note.remoteSha) {
+        throw new HttpError(409, "远程文章已被修改，请先拉取后再发布");
+      }
+      return { path, slug: postSlugFromPath(path), sha: file.sha };
+    } catch (error) {
+      if (error.status !== 404) throw error;
+      return { path, slug: postSlugFromPath(path), sha: null };
+    }
+  }
+
+  const baseSlug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
+  for (let suffix = 1; suffix <= 100; suffix += 1) {
+    const slug = suffix === 1 ? baseSlug : `${baseSlug}-${suffix}`;
+    const path = postFilePath(note, env, slug);
+    try {
+      const file = await githubGetContent(path, env);
+      const existing = parseHexoPost(decodeBase64(file.content || ""), path, file.sha, env);
+      if (existing.id === note.id) return { path, slug, sha: file.sha };
+    } catch (error) {
+      if (error.status === 404) return { path, slug, sha: null };
+      throw error;
+    }
+  }
+  throw new HttpError(409, "同名文章过多，无法生成唯一发布地址");
+}
+
+function safePostPath(value, env) {
+  const directory = normalizePostDirectory(env.POST_DIR || "source/_posts");
+  const path = String(value || "").trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  if (!path || path.includes("..") || !path.startsWith(`${directory}/`) || !/\.md$/i.test(path)) {
+    throw new HttpError(400, "无效的文章路径");
+  }
+  return path;
+}
+
+function postSlugFromPath(path) {
+  const filename = String(path || "").split("/").pop() || "";
+  return filename.replace(/\.md$/i, "");
+}
+
+function publicPostUrl(note, env, slugOverride = "") {
   const [datePart] = formatHexoDate(note.createdAt, env).split(" ");
   const [year, month, day] = datePart.split("-");
-  const slug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
+  const slug = normalizePostSlug(slugOverride || note.slug || makeSlug(note.title), note.title);
   return `${siteBaseUrl(env)}/${year}/${month}/${day}/${encodeURIComponent(slug)}/`;
 }
 
 function siteBaseUrl(env) {
-  return String(env.SITE_URL || "http://tomfng.space").trim().replace(/\/+$/g, "") || "http://tomfng.space";
+  return String(env.SITE_URL || "https://tomfng.space").trim().replace(/\/+$/g, "") || "https://tomfng.space";
 }
 
-function buildHexoPost(note, env) {
+function buildHexoPost(note, env, revision = randomRevision()) {
   const category = normalizeCategory(note.category);
   const tags = normalizeTags(note.tags);
-  const frontMatter = [
-    "---",
-    `title: ${yamlScalar(note.title || "无标题")}`,
-    `date: ${formatHexoDate(note.createdAt, env)}`,
-    `updated: ${formatHexoDate(note.updatedAt, env)}`,
-    "categories:",
-    `  - ${yamlScalar(category)}`
-  ];
-  if (tags.length) frontMatter.push("tags:", ...tags.map((tag) => `  - ${yamlScalar(tag)}`));
-  if (note.summary) frontMatter.push(`description: ${yamlScalar(note.summary)}`);
-  frontMatter.push("---");
-  return `${frontMatter.join("\n")}\n\n${postBody(note)}\n`;
+  const frontMatter = {
+    ...(note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {}),
+    title: note.title || "无标题",
+    date: formatHexoDate(note.createdAt, env),
+    updated: formatHexoDate(note.updatedAt, env),
+    admin_id: note.id,
+    admin_revision: revision,
+    categories: [category]
+  };
+  if (tags.length) frontMatter.tags = tags;
+  else delete frontMatter.tags;
+  if (note.summary) frontMatter.description = note.summary;
+  else delete frontMatter.description;
+  const body = postBody(note);
+  const marker = `<!-- ${REVISION_MARKER}:${revision} -->`;
+  const yaml = stringifyYaml(frontMatter, { lineWidth: 0 }).trimEnd();
+  return `---\n${yaml}\n---\n\n${body ? `${body}\n\n` : ""}${marker}\n`;
 }
 
 function normalizeNote(note = {}) {
@@ -332,8 +441,62 @@ function normalizeNote(note = {}) {
     status: "published",
     content: String(note.content || ""),
     createdAt: note.createdAt || current,
-    updatedAt: note.updatedAt || current
+    updatedAt: note.updatedAt || current,
+    remotePath: String(note.remotePath || ""),
+    remoteSha: String(note.remoteSha || ""),
+    frontMatter: note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {}
   };
+}
+
+function parseHexoPost(source, path, sha, env = {}) {
+  const parsed = splitFrontMatter(source);
+  const attributes = parsed.attributes;
+  const slug = postSlugFromPath(path);
+  const title = String(attributes.title || slug || "无标题").trim();
+  const categories = Array.isArray(attributes.categories) ? attributes.categories : [attributes.categories];
+  const body = stripRevisionMarker(parsed.body).trim();
+  return {
+    id: String(attributes.admin_id || `post:${path}`),
+    title,
+    slug,
+    category: normalizeCategory(categories.find(Boolean)),
+    summary: String(attributes.description || "").trim(),
+    tags: normalizeTags(attributes.tags),
+    status: "published",
+    content: body,
+    createdAt: hexoDateValue(attributes.date, env),
+    updatedAt: hexoDateValue(attributes.updated || attributes.date, env),
+    remotePath: path,
+    remoteSha: String(sha || ""),
+    localDirty: false,
+    parseError: parsed.error || "",
+    frontMatter: attributes
+  };
+}
+
+function splitFrontMatter(source) {
+  const markdown = String(source || "").replace(/\r\n/g, "\n");
+  const match = /^---\s*\n([\s\S]*?)\n---\s*(?:\n|$)/.exec(markdown);
+  if (!match) return { attributes: {}, body: markdown, error: "缺少 Front Matter" };
+  try {
+    const attributes = parseYaml(match[1]) || {};
+    return { attributes: typeof attributes === "object" ? attributes : {}, body: markdown.slice(match[0].length), error: "" };
+  } catch (error) {
+    return { attributes: {}, body: markdown.slice(match[0].length), error: error.message || "Front Matter 解析失败" };
+  }
+}
+
+function stripRevisionMarker(markdown) {
+  return String(markdown || "").replace(new RegExp(`\\n?<!--\\s*${REVISION_MARKER}:[^>]+-->\\s*$`), "");
+}
+
+function hexoDateValue(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+  const text = String(value || "").trim();
+  if (!text) return new Date().toISOString();
+  const normalized = text.replace(" ", "T");
+  const date = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(normalized) ? normalized : `${normalized}+08:00`);
+  return Number.isNaN(date.getTime()) ? text : date.toISOString();
 }
 
 function normalizeCategory(category) {
@@ -383,10 +546,6 @@ function stripFrontMatter(markdown) {
   return String(markdown || "").replace(/^---\s*\n[\s\S]*?\n---\s*(\n|$)/, "");
 }
 
-function yamlScalar(value) {
-  return JSON.stringify(String(value || ""));
-}
-
 function formatHexoDate(value, env) {
   const date = new Date(value || Date.now());
   const safeDate = Number.isNaN(date.getTime()) ? new Date() : date;
@@ -411,7 +570,7 @@ function preflight(request, env) {
     status: 204,
     headers: {
       ...corsHeaders(request, env),
-      "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+      "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
       "Access-Control-Allow-Headers": "Authorization, Content-Type",
       "Access-Control-Max-Age": "86400"
     }
@@ -464,7 +623,7 @@ function requireAllowedOrigin(request, env) {
 }
 
 function allowedOrigins(env) {
-  return String(env.ALLOWED_ORIGINS || "https://tomfng.space,http://tomfng.space,https://tomfngblog.me,http://localhost:4001,http://[::1]:4001")
+  return String(env.ALLOWED_ORIGINS || "https://tomfng.space,http://localhost:4001,http://[::1]:4001")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
@@ -483,9 +642,7 @@ function safeReturnTo(value, env) {
 function safePublicUrl(value, env) {
   try {
     const url = new URL(value || siteBaseUrl(env));
-    const allowed = new Set(allowedOrigins(env));
-    allowed.add(new URL(siteBaseUrl(env)).origin);
-    if (!allowed.has(url.origin)) throw new Error("bad origin");
+    if (url.origin !== new URL(siteBaseUrl(env)).origin) throw new Error("bad origin");
     return url.href;
   } catch {
     throw new HttpError(400, "只能检查本站发布地址");
@@ -533,6 +690,25 @@ function randomToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
   return base64UrlEncodeBytes(bytes);
+}
+
+function randomRevision() {
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return randomToken().slice(0, 24);
+}
+
+async function mapLimit(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function base64UrlEncodeString(value) {
@@ -610,3 +786,15 @@ class HttpError extends Error {
     this.status = status;
   }
 }
+
+export const __test = {
+  buildHexoPost,
+  parseHexoPost,
+  postBody,
+  postSlugFromPath,
+  publicPostUrl,
+  resolvePostTarget,
+  safePostPath,
+  splitFrontMatter,
+  stripRevisionMarker
+};

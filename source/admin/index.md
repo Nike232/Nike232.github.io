@@ -40,7 +40,7 @@ comments: false
 <div class="status-line">
 <span class="status-text" id="status-text">本地工作区</span>
 <div class="sync-actions">
-<button class="ghost-button" id="pull-remote" type="button"><i class="fa-solid fa-rotate"></i><span>拉取笔记</span></button>
+<button class="ghost-button" id="pull-remote" type="button"><i class="fa-solid fa-rotate"></i><span>同步文章</span></button>
 <button class="ghost-button" id="save-local" type="button"><i class="fa-regular fa-floppy-disk"></i><span>本地保存</span></button>
 <button class="solid-button" id="publish-remote" type="button"><i class="fa-solid fa-cloud-arrow-up"></i><span>发布文章</span></button>
 </div>
@@ -70,10 +70,9 @@ comments: false
 </label>
 <label class="field">
 <span>状态</span>
-<select id="field-status" name="status">
-<option value="published">published</option>
-<option value="draft">draft</option>
-<option value="archived">archived</option>
+<select id="field-status" name="status" aria-label="发布状态">
+<option value="draft">草稿</option>
+<option value="published">已发布</option>
 </select>
 <small class="field-error"></small>
 </label>
@@ -101,7 +100,7 @@ comments: false
 <details class="preview-panel" aria-label="预览" data-admin-workspace hidden>
 <summary class="preview-head">
 <h2>预览</h2>
-<span class="state-pill state-saved" id="dirty-state">已保存</span>
+<span class="state-pill state-saved" id="dirty-state">已保存到本机</span>
 </summary>
 <p class="preview-summary" id="preview-summary"></p>
 <div class="preview-body">

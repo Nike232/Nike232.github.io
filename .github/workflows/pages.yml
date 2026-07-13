@@ -47,5 +47,9 @@ jobs:
           cd ../pages-main
           touch .nojekyll
           git add -A
-          git commit -m "Deploy site from ${GITHUB_SHA}" || exit 0
+          if git diff --cached --quiet; then
+            echo "Generated site is already up to date"
+            exit 0
+          fi
+          git commit -m "Deploy site from ${GITHUB_SHA}"
           git push origin HEAD:main
