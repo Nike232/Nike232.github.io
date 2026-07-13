@@ -180,6 +180,7 @@ function renderSelected(notes) {
     ${note.summary ? `<p class="note-summary">${escapeHtml(note.summary)}</p>` : ""}
     <div class="markdown-body">${markdownToHtml(contentWithoutTitleHeading(note) || " ")}</div>
   `;
+  window.TomfngMermaid?.renderAll(elements.view);
 }
 
 function contentWithoutTitleHeading(note) {

@@ -67,6 +67,7 @@ const SLASH_COMMAND_KEYWORDS = {
   "task-list": "待办事项 任务 清单 checkbox todo task",
   quote: "引用 引述 blockquote quote",
   "code-block": "代码块 程序 code block",
+  mermaid: "流程图 图表 架构图 时序图 diagram flowchart mermaid",
   "math-block": "公式 数学 LaTeX TeX equation math",
   table: "表格 table grid",
   "horizontal-rule": "分割线 横线 divider separator hr",
@@ -464,6 +465,78 @@ function installCodeMirrorLanguageAliases() {
   CodeMirror.findModeByName = findModeByLanguage;
 }
 
+function installMermaidCodeRenderer() {
+  const FoldCode = window.HyperMD?.FoldCode;
+  if (!FoldCode?.registerRenderer) return false;
+  if (FoldCode.rendererRegistry?.mermaid) return true;
+
+  FoldCode.registerRenderer({
+    name: "mermaid",
+    pattern: /^(?:mermaid|mmd)$/i,
+    renderer(code, info) {
+      const container = document.createElement("div");
+      container.className = "note-mermaid-diagram is-loading";
+      container.setAttribute("aria-busy", "true");
+      container.innerHTML = `
+        <div class="note-mermaid-stage" aria-live="polite">
+          <span class="note-mermaid-skeleton" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+        <button class="note-mermaid-edit" type="button" title="编辑 Mermaid 源码" aria-label="编辑 Mermaid 源码"><i class="fa-solid fa-pen"></i></button>
+      `;
+      const stage = container.querySelector(".note-mermaid-stage");
+      let active = true;
+
+      const openSource = (event) => {
+        event?.preventDefault();
+        event?.stopPropagation();
+        if (!active) return;
+        info.break();
+        info.editor.focus();
+      };
+      container.addEventListener("click", openSource);
+      container.querySelector(".note-mermaid-edit").addEventListener("click", openSource);
+      info.onRemove = () => {
+        active = false;
+        window.TomfngMermaid?.cancel(stage);
+      };
+
+      if (!window.TomfngMermaid?.render) {
+        container.classList.remove("is-loading");
+        container.classList.add("is-error");
+        container.removeAttribute("aria-busy");
+        stage.innerHTML = '<strong>图表组件未加载</strong><small>点击返回 Mermaid 源码</small>';
+        return container;
+      }
+
+      window.TomfngMermaid.render(code, stage, {
+        idPrefix: "tomfng-editor-mermaid",
+        label: "Mermaid 图表"
+      }).then((result) => {
+        if (!active || result.cancelled) return;
+        container.classList.remove("is-loading");
+        container.classList.add("is-rendered");
+        container.removeAttribute("aria-busy");
+        info.changed();
+      }).catch((error) => {
+        if (!active) return;
+        container.classList.remove("is-loading");
+        container.classList.add("is-error");
+        container.removeAttribute("aria-busy");
+        stage.innerHTML = "";
+        const label = document.createElement("strong");
+        label.textContent = error?.code === "MERMAID_LOAD_FAILED" ? "图表加载失败" : "图表语法有误";
+        const detail = document.createElement("small");
+        detail.textContent = window.TomfngMermaid.conciseError(error);
+        stage.append(label, detail);
+        info.changed();
+      });
+
+      return container;
+    }
+  });
+  return true;
+}
+
 function initMarkdownEditor() {
   if (!window.CodeMirror) {
     fields.content.classList.add("is-fallback-editor");
@@ -488,6 +561,7 @@ function initMarkdownEditor() {
   const tabCommand = window.CodeMirror.commands.hmdTab ? "hmdTab" : null;
   const shiftTabCommand = window.CodeMirror.commands.hmdShiftTab ? "hmdShiftTab" : "indentLess";
   const katexRenderer = window.HyperMD_PowerPack?.["fold-math-with-katex"]?.KatexRenderer || null;
+  const mermaidRenderer = useHyperMD && installMermaidCodeRenderer();
 
   const editorOptions = {
     mode: useHyperMD ? {
@@ -536,6 +610,7 @@ function initMarkdownEditor() {
       math: Boolean(katexRenderer)
     },
     hmdFoldMath: katexRenderer ? { renderer: katexRenderer } : false,
+    hmdFoldCode: mermaidRenderer ? { mermaid: true } : false,
     hmdInsertFile: false,
     hmdReadLink: { baseURI: `${window.location.origin}/` },
     hmdModeLoader: useHyperMD ? loadCodeMirrorMode : false,
@@ -868,6 +943,8 @@ function applyBlockCommand(command, cm = state.editor) {
       applyLinePrefixCommand(cm, command);
     } else if (command === "code-block") {
       insertCodeBlock(cm);
+    } else if (command === "mermaid") {
+      insertMermaidBlock(cm);
     } else if (command === "math-block") {
       insertMathBlock(cm);
     } else if (command === "table") {
@@ -1098,6 +1175,11 @@ function applyLinePrefixCommand(cm, command) {
 
 function insertCodeBlock(cm) {
   const template = markdownBlockTemplate("code-block", cm.getSelection());
+  insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
+}
+
+function insertMermaidBlock(cm) {
+  const template = markdownBlockTemplate("mermaid", cm.getSelection());
   insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
 }
 
@@ -2156,6 +2238,7 @@ function renderPreview(note, { force = false } = {}) {
   }
   if (!force && !state.previewDirty && state.previewNoteId === note.id) return;
   elements.previewContent.innerHTML = markdownToHtml(contentWithoutTitleHeading(note) || " ");
+  window.TomfngMermaid?.renderAll(elements.previewContent);
   state.previewDirty = false;
   state.previewNoteId = note.id;
 }
