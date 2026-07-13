@@ -5,6 +5,7 @@ const { marked } = require("marked");
 
 global.window = new JSDOM("<!doctype html><html><body></body></html>").window;
 window.marked = marked;
+window.markedKatex = require("marked-katex-extension");
 window.DOMPurify = require("dompurify")(window);
 require("../source/note-utils.js");
 
@@ -117,6 +118,12 @@ test("Markdown preview renders complete GFM document structures", () => {
     "",
     "~~旧结论~~",
     "",
+    "质能关系为 $E = mc^2$。",
+    "",
+    "$$",
+    "\\int_0^1 x^2 \\, dx = \\frac{1}{3}",
+    "$$",
+    "",
     "| 指标 | 值 |",
     "| --- | ---: |",
     "| 准确率 | 98% |",
@@ -134,6 +141,9 @@ test("Markdown preview renders complete GFM document structures", () => {
   assert.match(html, /class="task-checkbox is-checked"[^>]+aria-checked="true"/);
   assert.match(html, /class="task-checkbox"[^>]+aria-checked="false"/);
   assert.match(html, /<del>旧结论<\/del>/);
+  assert.match(html, /class="katex"/);
+  assert.match(html, /class="katex-display"/);
+  assert.match(html, /<annotation encoding="application\/x-tex">E = mc\^2<\/annotation>/);
   assert.match(html, /<table>[\s\S]*<th>指标<\/th>[\s\S]*<td[^>]*>98%<\/td>/);
   assert.match(html, /<code class="language-js">const answer = 42;/);
   assert.match(html, /<a href="\.\/guide\.md">相对链接<\/a>/);
@@ -146,7 +156,8 @@ test("full Markdown rendering removes executable and unsafe HTML", () => {
     '<img src="data:image/png;base64,AAAA" alt="内联">',
     '<img src="//evil.example/image.png" alt="跨站">',
     '<a href="javascript:alert(1)" style="color:red">危险</a>',
-    '[危险链接](javascript:alert(1))'
+    '[危险链接](javascript:alert(1))',
+    '$\\href{javascript:alert(1)}{危险公式链接}$'
   ].join("\n"));
   const document = new JSDOM(html).window.document;
   const unsafeUrl = [...document.querySelectorAll("[href], [src]")].some((element) => {
@@ -156,7 +167,7 @@ test("full Markdown rendering removes executable and unsafe HTML", () => {
 
   assert.doesNotMatch(html, /<(?:script|form|input|button)\b/i);
   assert.equal(unsafeUrl, false);
-  assert.equal(document.querySelector("[style]"), null);
+  assert.equal(document.querySelector("a[style]"), null);
 });
 
 test("rich clipboard HTML becomes clean GFM Markdown", () => {
@@ -261,6 +272,10 @@ test("block insertion templates preserve the intended cursor selection", () => {
   assert.equal(code.body.slice(code.selectionStart, code.selectionEnd), "const value = 1;");
   assert.match(code.body, /^```\n/);
   assert.match(code.body, /\n```$/);
+
+  const math = markdownBlockTemplate("math-block", "E = mc^2");
+  assert.equal(math.body, "$$\nE = mc^2\n$$");
+  assert.equal(math.body.slice(math.selectionStart, math.selectionEnd), "E = mc^2");
 });
 
 test("editor view state keeps safe bounded document positions", () => {

@@ -176,6 +176,7 @@ function markdownToHtml(markdown = "") {
 function renderFullMarkdown(markdown) {
   const browser = globalThis.window || globalThis;
   const markedLibrary = browser.marked;
+  const mathExtension = browser.markedKatex;
   const sanitizer = browser.DOMPurify;
   if (
     typeof markedLibrary?.parse !== "function"
@@ -204,7 +205,17 @@ function renderFullMarkdown(markdown) {
   );
 
   try {
-    const html = markedLibrary.parse(String(markdown || ""), {
+    const parser = typeof markedLibrary.Marked === "function" ? new markedLibrary.Marked() : markedLibrary;
+    if (typeof mathExtension === "function" && typeof parser.use === "function") {
+      parser.use(mathExtension({
+        nonStandard: true,
+        output: "htmlAndMathml",
+        strict: "warn",
+        throwOnError: false,
+        trust: false
+      }));
+    }
+    const html = parser.parse(String(markdown || ""), {
       async: false,
       breaks: false,
       gfm: true,
@@ -212,10 +223,10 @@ function renderFullMarkdown(markdown) {
     });
     if (typeof html !== "string") return null;
     return sanitizer.sanitize(html, {
-      ADD_ATTR: ["target"],
+      ADD_ATTR: ["encoding", "target"],
+      ADD_TAGS: ["annotation", "semantics"],
       ALLOW_DATA_ATTR: false,
       ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|\/(?!\/)|#|(?:\.{1,2}\/)?(?![a-z][a-z0-9+.-]*:|\/\/|\\)[^\s<>]+$)/i,
-      FORBID_ATTR: ["style"],
       FORBID_TAGS: ["button", "embed", "form", "iframe", "input", "object", "option", "script", "select", "style", "textarea"]
     });
   } catch {
@@ -554,6 +565,12 @@ function markdownBlockTemplate(command, selected = "") {
     const body = selection ? `\`\`\`\n${selection}\n\`\`\`` : "```\n\n```";
     const start = body.indexOf("\n") + 1;
     return { body, selectionStart: start, selectionEnd: start + selection.length };
+  }
+  if (command === "math-block") {
+    const expression = selection || "E = mc^2";
+    const body = `$$\n${expression}\n$$`;
+    const start = body.indexOf("\n") + 1;
+    return { body, selectionStart: start, selectionEnd: start + expression.length };
   }
   if (command === "table") {
     const body = [

@@ -30,7 +30,9 @@
     "hexo-theme-redefine": "^2.8.4",
     "hexo-wordcount": "^6.0.1",
     "hypermd": "^0.3.11",
+    "katex": "^0.17.0",
     "marked": "^15.0.12",
+    "marked-katex-extension": "^5.1.10",
     "stylus": "^0.64.0",
     "turndown": "^7.2.1",
     "turndown-plugin-gfm": "^1.0.2"

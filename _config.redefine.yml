@@ -440,7 +440,8 @@ inject:
     - <link rel="stylesheet" href="/vendor/codemirror/addon/dialog/dialog.css">
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-mode.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-light.css?v=20260706-vimfit3">
-    - <link rel="stylesheet" href="/note-tools.css?v=20260713-typora8">
+    - <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.17.0">
+    - <link rel="stylesheet" href="/note-tools.css?v=20260713-typora9">
     -
   # Inject custom footer html code
   footer:
@@ -456,13 +457,16 @@ inject:
     - <script src="/vendor/codemirror/addon/dialog/dialog.js"></script>
     - <script src="/vendor/codemirror/keymap/vim.js"></script>
     - <script src="/vendor/hypermd/hypermd-ai1.js?v=20260706-vimfit3"></script>
+    - <script src="/vendor/katex/katex.min.js?v=0.17.0"></script>
+    - <script src="/vendor/hypermd/fold-math-with-katex.js?v=20260713-katex1"></script>
     - <script src="/vendor/turndown/turndown.js?v=7.2.1"></script>
     - <script src="/vendor/turndown/turndown-plugin-gfm.js?v=1.0.2"></script>
     - <script src="/vendor/marked/marked.umd.js?v=15.0.12"></script>
+    - <script src="/vendor/marked-katex/index.umd.js?v=5.1.10"></script>
     - <script src="/vendor/dompurify/purify.min.js?v=3.4.12"></script>
-    - <script src="/note-utils.js?v=20260713-typora8"></script>
+    - <script src="/note-utils.js?v=20260713-typora9"></script>
     - <script src="/notes/notes.js?v=20260706-adminlock"></script>
-    - <script src="/admin/admin.js?v=20260713-typora7"></script>
+    - <script src="/admin/admin.js?v=20260713-typora9"></script>
 # INJECT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< end
 
 

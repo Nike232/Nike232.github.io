@@ -50,6 +50,7 @@ const SLASH_COMMAND_KEYWORDS = {
   "task-list": "待办事项 任务 清单 checkbox todo task",
   quote: "引用 引述 blockquote quote",
   "code-block": "代码块 程序 code block",
+  "math-block": "公式 数学 LaTeX TeX equation math",
   table: "表格 table grid",
   "horizontal-rule": "分割线 横线 divider separator hr",
   image: "图片 图像 照片 上传 image photo upload"
@@ -375,6 +376,7 @@ function initMarkdownEditor() {
     : enterCommand;
   const tabCommand = window.CodeMirror.commands.hmdTab ? "hmdTab" : null;
   const shiftTabCommand = window.CodeMirror.commands.hmdShiftTab ? "hmdShiftTab" : "indentLess";
+  const katexRenderer = window.HyperMD_PowerPack?.["fold-math-with-katex"]?.KatexRenderer || null;
 
   const editorOptions = {
     mode: useHyperMD ? "text/x-hypermd" : {
@@ -412,7 +414,14 @@ function initMarkdownEditor() {
     },
     foldGutter: false,
     gutters: [],
-    hmdFoldMath: false,
+    hmdFold: {
+      code: true,
+      emoji: true,
+      image: true,
+      link: true,
+      math: Boolean(katexRenderer)
+    },
+    hmdFoldMath: katexRenderer ? { renderer: katexRenderer } : false,
     hmdInsertFile: false,
     hmdReadLink: { baseURI: `${window.location.origin}/` },
     hmdModeLoader: false,
@@ -468,6 +477,7 @@ function initMarkdownEditor() {
     ? window.HyperMD.fromTextArea(fields.content, editorOptions)
     : window.CodeMirror.fromTextArea(fields.content, editorOptions);
 
+  state.editor.on("keydown", handleEditorRawShortcut);
   bindEditorImageTransfers();
 
   state.editor.on("change", (_cm, change) => {
@@ -593,7 +603,8 @@ function applyMarkdownCommand(command, cm = state.editor) {
     bold: ["**", "**"],
     italic: ["*", "*"],
     strike: ["~~", "~~"],
-    code: ["`", "`"]
+    code: ["`", "`"],
+    math: ["$", "$"]
   };
 
   cm.operation(() => {
@@ -618,6 +629,22 @@ function markdownShortcut(command, respectVimNormal = true) {
     applyMarkdownCommand(command, cm);
     return undefined;
   };
+}
+
+function handleEditorRawShortcut(cm, event) {
+  const key = String(event.key || "").toLowerCase();
+  const keyCode = Number(event.keyCode || event.which || 0);
+  const mathModifiers = (event.shiftKey && !event.altKey) || (event.altKey && !event.shiftKey);
+  if (
+    !(event.ctrlKey || event.metaKey)
+    || !mathModifiers
+    || (key !== "m" && keyCode !== 77)
+  ) return;
+  const vim = state.editorMode === "vim" ? cm.state?.vim : null;
+  if (vim && !vim.insertMode && !vim.visualMode) return;
+  event.preventDefault();
+  event.stopPropagation();
+  applyMarkdownCommand("math", cm);
 }
 
 function applyInlineMarks(cm, open, close, codeStyle) {
@@ -727,6 +754,8 @@ function applyBlockCommand(command, cm = state.editor) {
       applyLinePrefixCommand(cm, command);
     } else if (command === "code-block") {
       insertCodeBlock(cm);
+    } else if (command === "math-block") {
+      insertMathBlock(cm);
     } else if (command === "table") {
       insertTableBlock(cm);
     } else if (command === "horizontal-rule") {
@@ -955,6 +984,11 @@ function applyLinePrefixCommand(cm, command) {
 
 function insertCodeBlock(cm) {
   const template = markdownBlockTemplate("code-block", cm.getSelection());
+  insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
+}
+
+function insertMathBlock(cm) {
+  const template = markdownBlockTemplate("math-block", cm.getSelection());
   insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
 }
 

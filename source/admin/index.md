@@ -120,6 +120,7 @@ comments: false
 <button type="button" role="menuitem" data-block-command="quote"><i class="fa-solid fa-quote-left"></i><span>引用</span></button>
 <span class="editor-block-separator" aria-hidden="true"></span>
 <button type="button" role="menuitem" data-block-command="code-block"><i class="fa-solid fa-code"></i><span>代码块</span></button>
+<button type="button" role="menuitem" data-block-command="math-block"><i class="fa-solid fa-square-root-variable"></i><span>公式块</span></button>
 <button type="button" role="menuitem" data-block-command="table"><i class="fa-solid fa-table-cells"></i><span>表格</span></button>
 <button type="button" role="menuitem" data-block-command="horizontal-rule"><i class="fa-solid fa-minus"></i><span>分割线</span></button>
 <button type="button" role="menuitem" data-block-command="image"><i class="fa-regular fa-image"></i><span>图片</span></button>
@@ -132,6 +133,7 @@ comments: false
 <button type="button" data-editor-command="strike" title="删除线" aria-label="删除线"><s>S</s></button>
 <span aria-hidden="true"></span>
 <button type="button" data-editor-command="code" title="行内代码" aria-label="行内代码"><i class="fa-solid fa-code"></i></button>
+<button type="button" data-editor-command="math" title="行内公式" aria-label="行内公式"><i class="fa-solid fa-square-root-variable"></i></button>
 <button type="button" data-editor-command="link" title="链接" aria-label="链接"><i class="fa-solid fa-link"></i></button>
 </div>
 <textarea class="editor-textarea" id="field-content" name="content" spellcheck="false" placeholder="开始写..."></textarea>

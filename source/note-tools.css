@@ -1390,6 +1390,32 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   background: transparent !important;
 }
 
+.editor-field .hmd-fold-math {
+  color: var(--note-text);
+  cursor: text;
+}
+
+.editor-field .hmd-fold-math.math-1 .katex {
+  font-size: 1.03em;
+}
+
+.editor-field .hmd-fold-math.math-2 {
+  display: block;
+  width: 100%;
+  margin: 0.9rem 0 1.05rem;
+  padding: 0.35rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  text-align: center;
+}
+
+.editor-field .hmd-math-katex-error,
+.editor-field .katex-error {
+  color: var(--note-red);
+  font-family: var(--note-mono);
+  font-size: 0.85em;
+}
+
 .editor-field .cm-s-hypermd-light span.cm-link,
 .editor-field .cm-s-hypermd-light span.cm-url {
   color: var(--note-blue);
@@ -2195,6 +2221,28 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 .note-rendered del,
 .note-view .markdown-body del {
   color: var(--note-muted);
+}
+
+.note-rendered .katex-display,
+.note-view .markdown-body .katex-display {
+  max-width: 100%;
+  margin: 1.25rem 0 1.4rem;
+  padding: 0.3rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.note-rendered .katex,
+.note-view .markdown-body .katex {
+  color: var(--note-text);
+  font-size: 1.04em;
+}
+
+.note-rendered .katex-error,
+.note-view .markdown-body .katex-error {
+  color: var(--note-red);
+  font-family: var(--note-mono);
+  font-size: 0.85em;
 }
 
 .note-rendered code,
