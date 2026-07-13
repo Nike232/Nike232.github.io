@@ -182,6 +182,42 @@
   line-height: 1.25 !important;
 }
 
+.sidebar-head-actions,
+.sidebar-view-tabs {
+  display: inline-flex;
+  align-items: center;
+}
+
+.sidebar-head-actions {
+  gap: 8px;
+}
+
+.sidebar-view-tabs {
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--note-line);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.sidebar-view-tabs button {
+  display: inline-grid;
+  width: 26px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border-radius: 3px;
+  color: var(--note-faint);
+  background: transparent;
+  font-size: 0.72rem;
+}
+
+.sidebar-view-tabs button:hover,
+.sidebar-view-tabs button.is-active {
+  color: var(--note-text);
+  background: var(--note-sidebar-hover);
+}
+
 .count-pill,
 .state-pill,
 .category-pill,
@@ -967,18 +1003,38 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 }
 
 .editor-field .CodeMirror-dialog {
+  padding: 8px 10px;
   border-top: 1px solid var(--note-line);
   color: var(--note-text);
   background: #fbfbfa;
   font-family: var(--note-sans);
+  font-size: 0.78rem;
+  box-shadow: 0 -6px 20px rgba(47, 45, 41, 0.045);
 }
 
 .editor-field .CodeMirror-dialog input {
+  width: min(320px, 48vw);
   min-height: 30px;
+  padding: 0 8px;
   border: 1px solid var(--note-line);
   border-radius: 4px;
   color: var(--note-text);
   background: #ffffff;
+}
+
+.editor-field .CodeMirror-dialog button {
+  min-height: 30px;
+  padding: 0 8px;
+  border-radius: 4px;
+  color: var(--note-muted);
+  background: #eeeeec;
+  font-family: var(--note-sans);
+  font-size: 0.74rem;
+}
+
+.editor-field .CodeMirror-dialog button:hover {
+  color: var(--note-text);
+  background: #e5e5e2;
 }
 
 .editor-field .cm-header {
@@ -1278,6 +1334,36 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   animation: none;
 }
 
+.editor-field .note-source-mode.cm-s-hypermd-light span.hmd-hidden-token,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-header,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-em,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-strong,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-strikethrough,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-code,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-link,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-image,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-quote,
+.editor-field .note-source-mode.cm-s-hypermd-light span.cm-formatting-list {
+  color: #96938c !important;
+  font-family: var(--note-mono) !important;
+  font-size: 0.78em !important;
+  letter-spacing: 0 !important;
+  opacity: 1 !important;
+}
+
+.editor-field .note-source-mode.cm-s-hypermd-light pre.HyperMD-header,
+.editor-field .note-source-mode.cm-s-hypermd-light pre.HyperMD-header.HyperMD-header-1,
+.editor-field .note-source-mode.cm-s-hypermd-light pre.HyperMD-header.HyperMD-header-2,
+.editor-field .note-source-mode.cm-s-hypermd-light pre.HyperMD-header.HyperMD-header-3 {
+  min-height: 1.75em;
+  margin: 0 !important;
+  color: var(--note-text);
+  font-family: var(--note-editor) !important;
+  font-size: var(--note-editor-size) !important;
+  font-weight: 520;
+  line-height: var(--note-editor-line) !important;
+}
+
 @keyframes note-image-loading {
   from { background-position: 110% 0; }
   to { background-position: -110% 0; }
@@ -1556,12 +1642,72 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 }
 
 .note-list,
-.admin-list {
+.admin-list,
+.admin-outline {
   display: grid;
   align-content: start;
   max-height: calc(100dvh - 240px);
   overflow: auto;
   padding: 6px;
+}
+
+.admin-outline {
+  gap: 1px;
+}
+
+.outline-row {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px 7px 18px;
+  overflow: hidden;
+  border-radius: 4px;
+  color: var(--note-muted);
+  background: transparent;
+  font-size: 0.81rem;
+  line-height: 1.45;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.outline-row::before {
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: 8px;
+  width: 2px;
+  border-radius: 2px;
+  background: #d9d7d1;
+  content: "";
+  opacity: 0;
+}
+
+.outline-row:hover {
+  color: var(--note-text);
+  background: var(--note-sidebar-hover);
+}
+
+.outline-row.is-active {
+  color: var(--note-text);
+  background: var(--note-selected);
+}
+
+.outline-row.is-active::before {
+  opacity: 1;
+}
+
+.outline-level-1 { padding-left: 18px; font-weight: 620; }
+.outline-level-2 { padding-left: 29px; font-weight: 540; }
+.outline-level-3 { padding-left: 40px; }
+.outline-level-4 { padding-left: 51px; font-size: 0.78rem; }
+.outline-level-5 { padding-left: 62px; font-size: 0.76rem; }
+.outline-level-6 { padding-left: 73px; font-size: 0.74rem; }
+
+.outline-empty {
+  min-height: 100px;
+  padding: 14px 10px;
 }
 
 .note-row {
@@ -2049,7 +2195,8 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   }
 
   .note-list,
-  .admin-list {
+  .admin-list,
+  .admin-outline {
     max-height: 300px;
   }
 
@@ -2073,6 +2220,11 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 }
 
 @media (max-width: 620px) {
+  .sidebar-view-tabs button {
+    width: 40px;
+    height: 40px;
+  }
+
   .editor-icon-button {
     width: 44px;
     min-width: 44px;
