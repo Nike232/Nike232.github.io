@@ -1,7 +1,11 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { JSDOM } = require("jsdom");
+const { marked } = require("marked");
 
-global.window = {};
+global.window = new JSDOM("<!doctype html><html><body></body></html>").window;
+window.marked = marked;
+window.DOMPurify = require("dompurify")(window);
 require("../source/note-utils.js");
 
 const TurndownService = require("turndown");
@@ -97,6 +101,62 @@ test("Markdown preview does not turn unsafe image URLs into elements", () => {
 
   assert.doesNotMatch(html, /<img/);
   assert.doesNotMatch(html, /tomfng-image-upload/);
+});
+
+test("Markdown preview renders complete GFM document structures", () => {
+  const html = markdownToHtml([
+    "# 一级标题",
+    "",
+    "###### 六级标题",
+    "",
+    "1. 第一项",
+    "2. 第二项",
+    "",
+    "- [x] 已完成",
+    "- [ ] 待处理",
+    "",
+    "~~旧结论~~",
+    "",
+    "| 指标 | 值 |",
+    "| --- | ---: |",
+    "| 准确率 | 98% |",
+    "",
+    "```js",
+    "const answer = 42;",
+    "```",
+    "",
+    "[相对链接](./guide.md)"
+  ].join("\n"));
+
+  assert.match(html, /<h1>一级标题<\/h1>/);
+  assert.match(html, /<h6>六级标题<\/h6>/);
+  assert.match(html, /<ol>[\s\S]*<li>第一项<\/li>/);
+  assert.match(html, /class="task-checkbox is-checked"[^>]+aria-checked="true"/);
+  assert.match(html, /class="task-checkbox"[^>]+aria-checked="false"/);
+  assert.match(html, /<del>旧结论<\/del>/);
+  assert.match(html, /<table>[\s\S]*<th>指标<\/th>[\s\S]*<td[^>]*>98%<\/td>/);
+  assert.match(html, /<code class="language-js">const answer = 42;/);
+  assert.match(html, /<a href="\.\/guide\.md">相对链接<\/a>/);
+});
+
+test("full Markdown rendering removes executable and unsafe HTML", () => {
+  const html = markdownToHtml([
+    '<script>alert("x")</script>',
+    '<form><input value="secret"><button>提交</button></form>',
+    '<img src="data:image/png;base64,AAAA" alt="内联">',
+    '<img src="//evil.example/image.png" alt="跨站">',
+    '<a href="javascript:alert(1)" style="color:red">危险</a>',
+    '[危险链接](javascript:alert(1))'
+  ].join("\n"));
+  const document = new JSDOM(html).window.document;
+  const unsafeUrl = [...document.querySelectorAll("[href], [src]")].some((element) => {
+    const value = element.getAttribute("href") || element.getAttribute("src") || "";
+    return /^(?:javascript:|data:|\/\/)/i.test(value);
+  });
+
+  assert.doesNotMatch(html, /<(?:script|form|input|button)\b/i);
+  assert.equal(unsafeUrl, false);
+  assert.equal(document.querySelector("[style]"), null);
 });
 
 test("rich clipboard HTML becomes clean GFM Markdown", () => {
