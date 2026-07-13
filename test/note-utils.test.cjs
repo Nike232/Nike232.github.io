@@ -13,6 +13,7 @@ const {
   markdownBlockTemplate,
   markdownToHtml,
   mergeRemotePosts,
+  normalizeEditorViewState,
   normalizeNote,
   transformMarkdownBlockLines
 } = window.TomfngNoteTools;
@@ -176,4 +177,46 @@ test("block insertion templates preserve the intended cursor selection", () => {
   assert.equal(code.body.slice(code.selectionStart, code.selectionEnd), "const value = 1;");
   assert.match(code.body, /^```\n/);
   assert.match(code.body, /\n```$/);
+});
+
+test("editor view state keeps safe bounded document positions", () => {
+  const view = normalizeEditorViewState({
+    selectedId: "note-b",
+    category: "写作",
+    sidebarMode: "outline",
+    notes: {
+      "note-a": { cursor: { line: 8.9, ch: -4 }, scrollTop: 280.5, scrollLeft: "12", pageScrollY: "640" },
+      "note-b": { cursor: { line: "3", ch: "17" }, scrollTop: -1, scrollLeft: null, pageScrollY: -2 },
+      "": { cursor: { line: 1, ch: 1 } },
+      "__proto__": { cursor: { line: 99, ch: 99 } }
+    }
+  });
+
+  assert.equal(view.selectedId, "note-b");
+  assert.equal(view.category, "写作");
+  assert.equal(view.sidebarMode, "outline");
+  assert.deepEqual(view.notes["note-a"], {
+    cursor: { line: 8, ch: 0 },
+    scrollTop: 280.5,
+    scrollLeft: 12,
+    pageScrollY: 640
+  });
+  assert.deepEqual(view.notes["note-b"], {
+    cursor: { line: 3, ch: 17 },
+    scrollTop: 0,
+    scrollLeft: 0,
+    pageScrollY: 0
+  });
+  assert.equal(Object.hasOwn(view.notes, ""), false);
+  assert.equal(Object.hasOwn(view.notes, "__proto__"), false);
+
+  const crowded = normalizeEditorViewState({
+    notes: Object.fromEntries(Array.from({ length: 55 }, (_, index) => [
+      `note-${index}`,
+      { cursor: { line: index, ch: 0 } }
+    ]))
+  });
+  assert.equal(Object.keys(crowded.notes).length, 50);
+  assert.equal(Object.hasOwn(crowded.notes, "note-0"), false);
+  assert.equal(Object.hasOwn(crowded.notes, "note-54"), true);
 });
