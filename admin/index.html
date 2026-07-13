@@ -141,7 +141,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://tomfng.space/images/redefine-og.webp">
 <meta property="article:published_time" content="2026-07-05T17:10:00.000Z">
-<meta property="article:modified_time" content="2026-07-13T14:59:27.716Z">
+<meta property="article:modified_time" content="2026-07-13T16:08:52.168Z">
 <meta property="article:author" content="Tomfng">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="http://tomfng.space/images/redefine-og.webp">
@@ -193,7 +193,12 @@
     
             
                 
-                    <link rel="stylesheet" href="/note-tools.css?v=20260713-typora8">
+                    <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.17.0">
+                
+    
+            
+                
+                    <link rel="stylesheet" href="/note-tools.css?v=20260713-typora9">
                 
     
 
@@ -886,6 +891,7 @@
 <button type="button" role="menuitem" data-block-command="quote"><i class="fa-solid fa-quote-left"></i><span>引用</span></button>
 <span class="editor-block-separator" aria-hidden="true"></span>
 <button type="button" role="menuitem" data-block-command="code-block"><i class="fa-solid fa-code"></i><span>代码块</span></button>
+<button type="button" role="menuitem" data-block-command="math-block"><i class="fa-solid fa-square-root-variable"></i><span>公式块</span></button>
 <button type="button" role="menuitem" data-block-command="table"><i class="fa-solid fa-table-cells"></i><span>表格</span></button>
 <button type="button" role="menuitem" data-block-command="horizontal-rule"><i class="fa-solid fa-minus"></i><span>分割线</span></button>
 <button type="button" role="menuitem" data-block-command="image"><i class="fa-regular fa-image"></i><span>图片</span></button>
@@ -898,6 +904,7 @@
 <button type="button" data-editor-command="strike" title="删除线" aria-label="删除线"><s>S</s></button>
 <span aria-hidden="true"></span>
 <button type="button" data-editor-command="code" title="行内代码" aria-label="行内代码"><i class="fa-solid fa-code"></i></button>
+<button type="button" data-editor-command="math" title="行内公式" aria-label="行内公式"><i class="fa-solid fa-square-root-variable"></i></button>
 <button type="button" data-editor-command="link" title="链接" aria-label="链接"><i class="fa-solid fa-link"></i></button>
 </div>
 <textarea class="editor-textarea" id="field-content" name="content" spellcheck="false" placeholder="开始写..."></textarea>
@@ -1093,6 +1100,18 @@
                 
 
                     
+                        <script data-swup-reload-script src="/vendor/katex/katex.min.js?v=0.17.0"></script>
+                    
+        
+                
+
+                    
+                        <script data-swup-reload-script src="/vendor/hypermd/fold-math-with-katex.js?v=20260713-katex1"></script>
+                    
+        
+                
+
+                    
                         <script data-swup-reload-script src="/vendor/turndown/turndown.js?v=7.2.1"></script>
                     
         
@@ -1111,13 +1130,19 @@
                 
 
                     
+                        <script data-swup-reload-script src="/vendor/marked-katex/index.umd.js?v=5.1.10"></script>
+                    
+        
+                
+
+                    
                         <script data-swup-reload-script src="/vendor/dompurify/purify.min.js?v=3.4.12"></script>
                     
         
                 
 
                     
-                        <script data-swup-reload-script src="/note-utils.js?v=20260713-typora8"></script>
+                        <script data-swup-reload-script src="/note-utils.js?v=20260713-typora9"></script>
                     
         
                 
@@ -1129,7 +1154,7 @@
                 
 
                     
-                        <script data-swup-reload-script src="/admin/admin.js?v=20260713-typora7"></script>
+                        <script data-swup-reload-script src="/admin/admin.js?v=20260713-typora9"></script>
                     
         
         
