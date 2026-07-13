@@ -24,6 +24,7 @@ const {
   normalizeEditorViewState,
   normalizeNote,
   parseMarkdownSlashContext,
+  toggleMarkdownTask,
   transformMarkdownBlockLines
 } = window.TomfngNoteTools;
 
@@ -254,6 +255,20 @@ test("block commands transform and toggle Markdown lines", () => {
     transformMarkdownBlockLines(["  普通内容"], "task-list"),
     ["  - [ ] 普通内容"]
   );
+});
+
+test("task toggles preserve nested Markdown list prefixes", () => {
+  assert.deepEqual(toggleMarkdownTask("- [ ] 写作"), {
+    line: "- [x] 写作",
+    checked: true,
+    stateCh: 3
+  });
+  assert.deepEqual(toggleMarkdownTask("  > 3. [X] 发布"), {
+    line: "  > 3. [ ] 发布",
+    checked: false,
+    stateCh: 8
+  });
+  assert.equal(toggleMarkdownTask("正文中的 - [ ] 不是待办项"), null);
 });
 
 test("slash commands only open at a Markdown block boundary", () => {
