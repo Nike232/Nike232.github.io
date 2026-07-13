@@ -120,6 +120,7 @@ comments: false
 <button type="button" role="menuitem" data-block-command="horizontal-rule"><i class="fa-solid fa-minus"></i><span>分割线</span></button>
 <button type="button" role="menuitem" data-block-command="image"><i class="fa-regular fa-image"></i><span>图片</span></button>
 </div>
+<div class="editor-slash-menu" id="editor-slash-menu" role="listbox" aria-label="插入内容" hidden></div>
 <input id="editor-image-picker" type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden>
 <div class="editor-selection-toolbar" id="editor-selection-toolbar" role="toolbar" aria-label="文本格式" hidden>
 <button type="button" data-editor-command="bold" title="加粗" aria-label="加粗"><strong>B</strong></button>

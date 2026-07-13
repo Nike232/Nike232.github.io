@@ -20,6 +20,7 @@ const {
   normalizeNote,
   normalizeNotesData,
   normalizeTags,
+  parseMarkdownSlashContext,
   stripMarkdownBlockPrefix,
   transformMarkdownBlockLines
 } = tools;
@@ -37,6 +38,20 @@ const DEFAULT_API_BASE = "https://tomfng-blog-admin.tomfng-space.workers.dev";
 const DEFAULT_CONFIG = {
   apiBase: DEFAULT_API_BASE,
   sessionToken: ""
+};
+const SLASH_COMMAND_KEYWORDS = {
+  paragraph: "正文 文本 段落 paragraph text",
+  "heading-1": "一级标题 大标题 heading title h1",
+  "heading-2": "二级标题 中标题 heading title h2",
+  "heading-3": "三级标题 小标题 heading title h3",
+  "bullet-list": "无序列表 项目符号 bullet unordered list",
+  "ordered-list": "有序列表 编号 number ordered list",
+  "task-list": "待办事项 任务 清单 checkbox todo task",
+  quote: "引用 引述 blockquote quote",
+  "code-block": "代码块 程序 code block",
+  table: "表格 table grid",
+  "horizontal-rule": "分割线 横线 divider separator hr",
+  image: "图片 图像 照片 上传 image photo upload"
 };
 const initialEditorView = normalizeEditorViewState(loadEditorView());
 
@@ -71,6 +86,11 @@ const state = {
   typewriterFrame: null,
   focusWriting: false,
   blockMenuOpen: false,
+  slashMenuOpen: false,
+  slashContext: null,
+  slashCommands: [],
+  slashSelectedIndex: 0,
+  slashKeyMap: null,
   autosaveStatus: "saved",
   syncingEditor: false,
   publishPollId: 0
@@ -125,6 +145,7 @@ const elements = {
   selectionToolbar: root.querySelector("#editor-selection-toolbar"),
   blockToggle: root.querySelector("#editor-block-toggle"),
   blockMenu: root.querySelector("#editor-block-menu"),
+  slashMenu: root.querySelector("#editor-slash-menu"),
   imagePicker: root.querySelector("#editor-image-picker"),
   editorMode: root.querySelector("#editor-mode"),
   editorPosition: root.querySelector("#editor-position"),
@@ -185,6 +206,16 @@ function bindWorkspaceEvents() {
   elements.blockMenu.querySelectorAll("[data-block-command]").forEach((button) => {
     button.addEventListener("click", () => applyBlockCommand(button.dataset.blockCommand));
   });
+  elements.slashMenu.addEventListener("mousedown", (event) => event.preventDefault());
+  elements.slashMenu.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-slash-command]");
+    if (button) executeSlashCommand(button.dataset.slashCommand);
+  });
+  elements.slashMenu.addEventListener("pointermove", (event) => {
+    const button = event.target.closest("[data-slash-index]");
+    if (!button) return;
+    setSlashSelection(Number(button.dataset.slashIndex), false);
+  });
   elements.imagePicker.addEventListener("change", () => {
     const files = [...(elements.imagePicker.files || [])];
     elements.imagePicker.value = "";
@@ -200,7 +231,12 @@ function bindWorkspaceEvents() {
   fields.title.addEventListener("input", autoSizeTitleField);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
   document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) return;
     if (event.key !== "Escape") return;
+    if (state.slashMenuOpen) {
+      closeSlashMenu();
+      return;
+    }
     if (state.blockMenuOpen) {
       toggleBlockMenu(false);
       return;
@@ -208,14 +244,17 @@ function bindWorkspaceEvents() {
     if (state.focusWriting) toggleFocusWriting(false);
   });
   document.addEventListener("pointerdown", (event) => {
-    if (!state.blockMenuOpen) return;
-    if (elements.blockMenu.contains(event.target) || elements.blockToggle.contains(event.target)) return;
-    toggleBlockMenu(false);
+    if (state.slashMenuOpen && !elements.slashMenu.contains(event.target)) closeSlashMenu();
+    if (state.blockMenuOpen && !elements.blockMenu.contains(event.target) && !elements.blockToggle.contains(event.target)) {
+      toggleBlockMenu(false);
+    }
   });
   window.addEventListener("resize", autoSizeTitleField);
   window.addEventListener("resize", positionBlockMenu);
+  window.addEventListener("resize", positionSlashMenu);
   window.addEventListener("scroll", () => {
     if (state.blockMenuOpen) toggleBlockMenu(false);
+    if (state.slashMenuOpen) positionSlashMenu();
     scheduleEditorViewSave();
   }, { passive: true });
   window.addEventListener("beforeunload", flushEditorSession);
@@ -417,6 +456,7 @@ function initMarkdownEditor() {
     updateSelectedFromFields();
     updateEditorStats();
     triggerTypingPulse(change);
+    syncSlashMenuFromEditor({ allowOpen: isSlashTriggerChange(change) });
   });
   state.editor.on("cursorActivity", () => {
     updateEditorStats();
@@ -425,6 +465,7 @@ function initMarkdownEditor() {
     scheduleTypewriterCenter();
     updateOutlineActiveState();
     scheduleEditorViewSave();
+    if (state.slashMenuOpen) syncSlashMenuFromEditor();
   });
   state.editor.on("focus", () => {
     setEditorFocusState(true);
@@ -433,6 +474,7 @@ function initMarkdownEditor() {
   state.editor.on("blur", () => {
     setEditorFocusState(false);
     hideSelectionToolbar();
+    if (state.slashMenuOpen) closeSlashMenu();
   });
   state.editor.on("vim-mode-change", (_cm, event) => {
     state.vimCursorMode = event?.mode || "normal";
@@ -442,6 +484,7 @@ function initMarkdownEditor() {
     syncEditorCursorStyle();
     hideSelectionToolbar();
     if (state.blockMenuOpen) toggleBlockMenu(false);
+    if (state.slashMenuOpen) closeSlashMenu();
     scheduleEditorViewSave();
   });
   syncEditorCursorStyle();
@@ -648,6 +691,7 @@ function applyParagraphCommand(cm) {
 
 function applyBlockCommand(command, cm = state.editor) {
   if (!cm || !requireOwnerAccess()) return;
+  if (state.slashMenuOpen) closeSlashMenu();
   toggleBlockMenu(false);
   if (command === "image") {
     elements.imagePicker.click();
@@ -691,6 +735,174 @@ function positionBlockMenu() {
   const x = Math.max(8, Math.min(window.innerWidth - width - 8, anchor.left));
   const below = anchor.bottom + 8;
   const y = below + height <= window.innerHeight - 8 ? below : Math.max(8, anchor.top - height - 8);
+  menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+}
+
+function getSlashCommandCatalog() {
+  return [...elements.blockMenu.querySelectorAll("[data-block-command]")].map((button) => {
+    const command = button.dataset.blockCommand;
+    const label = button.querySelector("span")?.textContent?.trim() || command;
+    return {
+      command,
+      label,
+      markup: button.innerHTML,
+      search: `${label} ${SLASH_COMMAND_KEYWORDS[command] || ""}`
+    };
+  });
+}
+
+function getSlashContext(cm = state.editor) {
+  if (!cm || cm.somethingSelected?.()) return null;
+  const cursor = cm.getCursor();
+  const parsed = parseMarkdownSlashContext(cm.getLine(cursor.line), cursor.ch);
+  if (!parsed) return null;
+  const tokenType = cm.getTokenTypeAt?.({ line: cursor.line, ch: Math.max(parsed.fromCh + 1, cursor.ch) }) || "";
+  if (/\b(?:comment|string)\b/.test(tokenType)) return null;
+  return {
+    line: cursor.line,
+    from: { line: cursor.line, ch: parsed.fromCh },
+    to: { line: cursor.line, ch: parsed.toCh },
+    query: parsed.query
+  };
+}
+
+function syncSlashMenuFromEditor({ allowOpen = false } = {}) {
+  const context = getSlashContext();
+  if (!context) {
+    if (state.slashMenuOpen) closeSlashMenu();
+    return;
+  }
+  if (!state.slashMenuOpen && !allowOpen) return;
+
+  const queryChanged = context.query !== state.slashContext?.query;
+  state.slashContext = context;
+  const query = normalizeSlashQuery(context.query);
+  state.slashCommands = getSlashCommandCatalog().filter((item) => (
+    !query || normalizeSlashQuery(item.search).includes(query)
+  ));
+  if (queryChanged || state.slashSelectedIndex >= state.slashCommands.length) {
+    state.slashSelectedIndex = 0;
+  }
+  if (!state.slashMenuOpen) openSlashMenu();
+  renderSlashMenu();
+  positionSlashMenu();
+}
+
+function isSlashTriggerChange(change) {
+  const inserted = Array.isArray(change?.text) ? change.text.join("\n") : "";
+  return inserted === "/" && ["+input", "paste"].includes(change?.origin);
+}
+
+function normalizeSlashQuery(value) {
+  return String(value || "").toLocaleLowerCase("zh-CN").replace(/\s+/g, "");
+}
+
+function openSlashMenu() {
+  if (!state.editor || state.slashMenuOpen) return;
+  if (state.blockMenuOpen) toggleBlockMenu(false);
+  state.slashMenuOpen = true;
+  elements.slashMenu.hidden = false;
+  const input = state.editor.getInputField?.();
+  input?.setAttribute("aria-haspopup", "listbox");
+  input?.setAttribute("aria-controls", elements.slashMenu.id);
+  input?.setAttribute("aria-expanded", "true");
+  state.slashKeyMap = {
+    name: "tomfng-slash-menu",
+    Up: () => moveSlashSelection(-1),
+    Down: () => moveSlashSelection(1),
+    Tab: () => moveSlashSelection(1),
+    "Shift-Tab": () => moveSlashSelection(-1),
+    Enter: () => executeSlashCommand() ? undefined : window.CodeMirror.Pass,
+    Esc: () => {
+      const passToVim = state.editorMode === "vim";
+      closeSlashMenu();
+      return passToVim ? window.CodeMirror.Pass : undefined;
+    }
+  };
+  state.editor.addKeyMap(state.slashKeyMap);
+}
+
+function closeSlashMenu() {
+  if (state.slashKeyMap && state.editor) state.editor.removeKeyMap(state.slashKeyMap);
+  state.slashKeyMap = null;
+  state.slashMenuOpen = false;
+  state.slashContext = null;
+  state.slashCommands = [];
+  state.slashSelectedIndex = 0;
+  elements.slashMenu.hidden = true;
+  elements.slashMenu.removeAttribute("aria-activedescendant");
+  elements.slashMenu.replaceChildren();
+  const input = state.editor?.getInputField?.();
+  input?.setAttribute("aria-expanded", "false");
+  input?.removeAttribute("aria-activedescendant");
+}
+
+function renderSlashMenu() {
+  if (!state.slashMenuOpen) return;
+  if (!state.slashCommands.length) {
+    elements.slashMenu.innerHTML = '<div class="editor-slash-empty">没有匹配的内容</div>';
+    elements.slashMenu.removeAttribute("aria-activedescendant");
+    state.editor?.getInputField?.()?.removeAttribute("aria-activedescendant");
+    return;
+  }
+  elements.slashMenu.innerHTML = state.slashCommands.map((item, index) => {
+    const active = index === state.slashSelectedIndex;
+    return `<button id="slash-command-${item.command}" type="button" role="option" aria-selected="${active}" class="${active ? "is-active" : ""}" data-slash-command="${item.command}" data-slash-index="${index}">${item.markup}</button>`;
+  }).join("");
+  setSlashSelection(state.slashSelectedIndex);
+}
+
+function setSlashSelection(index, scroll = true) {
+  if (!state.slashCommands.length) return;
+  const length = state.slashCommands.length;
+  state.slashSelectedIndex = ((Math.floor(index) % length) + length) % length;
+  let active = null;
+  elements.slashMenu.querySelectorAll("[data-slash-index]").forEach((button) => {
+    const selected = Number(button.dataset.slashIndex) === state.slashSelectedIndex;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+    if (selected) active = button;
+  });
+  if (!active) return;
+  elements.slashMenu.setAttribute("aria-activedescendant", active.id);
+  state.editor?.getInputField?.()?.setAttribute("aria-activedescendant", active.id);
+  if (scroll) active.scrollIntoView({ block: "nearest" });
+}
+
+function moveSlashSelection(delta) {
+  if (!state.slashMenuOpen || !state.slashCommands.length) return window.CodeMirror.Pass;
+  setSlashSelection(state.slashSelectedIndex + delta);
+  return undefined;
+}
+
+function executeSlashCommand(command = "") {
+  const cm = state.editor;
+  const context = getSlashContext(cm);
+  const selected = command || state.slashCommands[state.slashSelectedIndex]?.command;
+  if (!cm || !context || !selected) {
+    closeSlashMenu();
+    return false;
+  }
+  closeSlashMenu();
+  cm.operation(() => {
+    cm.replaceRange("", context.from, context.to, "+slash-command");
+    cm.setCursor(context.from);
+  });
+  applyBlockCommand(selected, cm);
+  return true;
+}
+
+function positionSlashMenu() {
+  if (!state.slashMenuOpen || !state.editor) return;
+  const cursor = state.editor.cursorCoords(state.editor.getCursor(), "window");
+  const menu = elements.slashMenu;
+  const width = menu.offsetWidth || 304;
+  const height = menu.offsetHeight || 320;
+  const x = Math.max(8, Math.min(window.innerWidth - width - 8, cursor.left));
+  const below = cursor.bottom + 9;
+  const y = below + height <= window.innerHeight - 8
+    ? below
+    : Math.max(8, cursor.top - height - 9);
   menu.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
 }
 
@@ -782,6 +994,7 @@ function hideSelectionToolbar() {
 }
 
 function toggleFocusWriting(force) {
+  if (state.slashMenuOpen) closeSlashMenu();
   state.focusWriting = typeof force === "boolean" ? force : !state.focusWriting;
   root.classList.toggle("is-focus-writing", state.focusWriting);
   elements.toggleFocus.classList.toggle("is-active", state.focusWriting);
@@ -1655,6 +1868,7 @@ function updateOutlineActiveState() {
 function renderEditor() {
   const note = getSelectedNote();
   const switchedDocument = switchEditorDocument(note?.id || null);
+  if (switchedDocument && state.slashMenuOpen) closeSlashMenu();
   const contentReloaded = Boolean(note && state.editor && state.editor.getValue() !== note.content);
   if (!switchedDocument && contentReloaded) captureEditorView();
   const disabled = !note || state.busy;
@@ -1881,6 +2095,7 @@ function setEditorEnabled(enabled) {
 
 function toggleEditorMode() {
   if (!requireOwnerAccess()) return;
+  if (state.slashMenuOpen) closeSlashMenu();
   state.editorMode = state.editorMode === "vim" ? "default" : "vim";
   if (state.editorMode === "vim" && (!window.CodeMirror || !window.CodeMirror.keyMap.vim)) {
     state.editorMode = "default";
@@ -1899,6 +2114,7 @@ function toggleEditorMode() {
 
 function toggleSourceMode(force) {
   if (!requireOwnerAccess()) return;
+  if (state.slashMenuOpen) closeSlashMenu();
   state.sourceMode = typeof force === "boolean" ? force : !state.sourceMode;
   const cm = state.editor;
   if (cm) {
@@ -1928,6 +2144,7 @@ function sourceModeShortcut(respectVimNormal) {
 
 function openEditorSearch() {
   if (!requireOwnerAccess() || !state.editor) return;
+  if (state.slashMenuOpen) closeSlashMenu();
   const command = window.CodeMirror?.commands?.findPersistent ? "findPersistent" : "find";
   if (!window.CodeMirror?.commands?.[command]) {
     setStatus("查找功能未加载", true);
@@ -1941,6 +2158,7 @@ function searchShortcut(command, respectVimNormal) {
   return (cm) => {
     const vim = state.editorMode === "vim" ? cm.state?.vim : null;
     if (respectVimNormal && vim && !vim.insertMode && !vim.visualMode) return window.CodeMirror.Pass;
+    if (state.slashMenuOpen) closeSlashMenu();
     const resolved = window.CodeMirror?.commands?.[command] ? command : "find";
     cm.execCommand(resolved);
     return undefined;
@@ -2070,6 +2288,7 @@ function setStatus(message, isError = false, linkUrl = "") {
 
 function setBusy(value) {
   state.busy = value;
+  if (value && state.slashMenuOpen) closeSlashMenu();
   [
     elements.newNote,
     elements.duplicateNote,

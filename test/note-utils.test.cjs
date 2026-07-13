@@ -15,6 +15,7 @@ const {
   mergeRemotePosts,
   normalizeEditorViewState,
   normalizeNote,
+  parseMarkdownSlashContext,
   transformMarkdownBlockLines
 } = window.TomfngNoteTools;
 
@@ -166,6 +167,15 @@ test("block commands transform and toggle Markdown lines", () => {
     transformMarkdownBlockLines(["  普通内容"], "task-list"),
     ["  - [ ] 普通内容"]
   );
+});
+
+test("slash commands only open at a Markdown block boundary", () => {
+  assert.deepEqual(parseMarkdownSlashContext("/", 1), { fromCh: 0, toCh: 1, query: "" });
+  assert.deepEqual(parseMarkdownSlashContext("  /标题", 5), { fromCh: 2, toCh: 5, query: "标题" });
+  assert.equal(parseMarkdownSlashContext("正文 /标题", 6), null);
+  assert.equal(parseMarkdownSlashContext("    /代码", 7), null);
+  assert.equal(parseMarkdownSlashContext("/标题 后文", 3), null);
+  assert.equal(parseMarkdownSlashContext("https://example.com", 8), null);
 });
 
 test("block insertion templates preserve the intended cursor selection", () => {
