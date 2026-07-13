@@ -441,7 +441,7 @@ inject:
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-mode.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-light.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.17.0">
-    - <link rel="stylesheet" href="/note-tools.css?v=20260713-typora9">
+    - <link rel="stylesheet" href="/note-tools.css?v=20260714-typora10">
     -
   # Inject custom footer html code
   footer:
