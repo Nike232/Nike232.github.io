@@ -82,6 +82,9 @@ const state = {
   typingTimer: null,
   autosaveTimer: null,
   secondaryRenderTimer: null,
+  secondaryRenderWork: null,
+  previewDirty: true,
+  previewNoteId: null,
   imageUploads: new Map(),
   imageUploadQueue: Promise.resolve(),
   richPasteConverter: null,
@@ -133,6 +136,7 @@ const elements = {
   previewTitle: root.querySelector("#preview-title"),
   previewSummary: root.querySelector("#preview-summary"),
   previewContent: root.querySelector("#preview-content"),
+  previewPanel: root.querySelector(".preview-panel"),
   errorTitle: root.querySelector("#error-title"),
   errorSlug: root.querySelector("#error-slug"),
   newNote: root.querySelector("#new-note"),
@@ -241,6 +245,11 @@ function bindWorkspaceEvents() {
   });
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
   fields.title.addEventListener("input", autoSizeTitleField);
+  elements.previewPanel.addEventListener("toggle", () => {
+    if (!elements.previewPanel.open) return;
+    const note = getSelectedNote();
+    if (note) renderPreview(note, { force: true });
+  });
   elements.form.addEventListener("submit", (event) => event.preventDefault());
   document.addEventListener("keydown", (event) => {
     if (event.defaultPrevented) return;
@@ -1733,6 +1742,13 @@ function updateSelectedFromFields() {
   if (!requireOwnerAccess()) return;
   const note = getSelectedNote();
   if (!note) return;
+  const previous = {
+    title: note.title,
+    category: normalizeCategory(note.category),
+    tags: note.tags.join("\u0000"),
+    summary: note.summary,
+    content: note.content
+  };
   note.title = fields.title.value.trimStart();
   note.category = normalizeCategory(fields.category.value);
   note.tags = normalizeTags(fields.tags.value);
@@ -1742,6 +1758,14 @@ function updateSelectedFromFields() {
   fields.slug.value = note.slug;
   note.summary = fields.summary.value.trimStart();
   note.content = getEditorValue();
+  const changes = {
+    title: previous.title !== note.title,
+    category: previous.category !== note.category,
+    tags: previous.tags !== note.tags.join("\u0000"),
+    summary: previous.summary !== note.summary,
+    content: previous.content !== note.content
+  };
+  if (!Object.values(changes).some(Boolean)) return;
   note.updatedAt = new Date().toISOString();
   note.localDirty = true;
   if (state.category !== "all" && state.category !== note.category) {
@@ -1750,20 +1774,40 @@ function updateSelectedFromFields() {
   markDirty("正在编辑");
   validateSelected();
   updateEditorStats();
-  scheduleSecondaryRender(note.id);
+  state.previewDirty = true;
+  scheduleSecondaryRender(note.id, {
+    categories: changes.category,
+    list: true,
+    outline: changes.content,
+    preview: changes.title || changes.summary || changes.content
+  });
 }
 
-function scheduleSecondaryRender(noteId) {
+function scheduleSecondaryRender(noteId, work) {
+  const queued = state.secondaryRenderWork?.noteId === noteId
+    ? state.secondaryRenderWork
+    : { noteId, categories: false, list: false, outline: false, preview: false };
+  for (const key of ["categories", "list", "outline", "preview"]) {
+    queued[key] = queued[key] || Boolean(work?.[key]);
+  }
+  state.secondaryRenderWork = queued;
   window.clearTimeout(state.secondaryRenderTimer);
   state.secondaryRenderTimer = window.setTimeout(() => {
     state.secondaryRenderTimer = null;
-    renderCategories();
-    renderList();
-    renderOutline();
-    renderSidebarMode();
-    const note = state.data.notes.find((item) => item.id === noteId);
-    if (note && note.id === state.selectedId) renderPreview(note);
-  }, 120);
+    const pending = state.secondaryRenderWork;
+    state.secondaryRenderWork = null;
+    if (!pending || pending.noteId !== state.selectedId) return;
+    if (pending.categories) renderCategories();
+    if (pending.list) renderList();
+    if (pending.outline && state.sidebarMode === "outline") {
+      renderOutline();
+      renderSidebarMode();
+    }
+    if (pending.preview) {
+      const note = state.data.notes.find((item) => item.id === pending.noteId);
+      if (note) renderPreview(note);
+    }
+  }, 180);
 }
 
 function render() {
@@ -1930,6 +1974,15 @@ function renderEditor() {
   if (switchedDocument && state.slashMenuOpen) closeSlashMenu();
   const contentReloaded = Boolean(note && state.editor && state.editor.getValue() !== note.content);
   if (!switchedDocument && contentReloaded) captureEditorView();
+  if (
+    note && (
+      switchedDocument
+      || contentReloaded
+      || state.previewNoteId !== note.id
+      || elements.previewTitle.textContent !== (note.title || "无标题")
+      || elements.previewSummary.textContent !== (note.summary || "")
+    )
+  ) state.previewDirty = true;
   const disabled = !note || state.busy;
   Object.values(fields).forEach((field) => {
     field.disabled = disabled;
@@ -1963,6 +2016,8 @@ function renderEditor() {
         <p>从左侧新建或选择一条笔记。</p>
       </div>
     `;
+    state.previewDirty = false;
+    state.previewNoteId = null;
     return;
   }
 
@@ -1986,10 +2041,18 @@ function autoSizeTitleField() {
   fields.title.style.height = `${Math.max(fields.title.scrollHeight, 40)}px`;
 }
 
-function renderPreview(note) {
+function renderPreview(note, { force = false } = {}) {
   elements.previewTitle.textContent = note.title || "无标题";
   elements.previewSummary.textContent = note.summary || "";
+  if (!force && !elements.previewPanel.open) {
+    state.previewDirty = true;
+    state.previewNoteId = note.id;
+    return;
+  }
+  if (!force && !state.previewDirty && state.previewNoteId === note.id) return;
   elements.previewContent.innerHTML = markdownToHtml(contentWithoutTitleHeading(note) || " ");
+  state.previewDirty = false;
+  state.previewNoteId = note.id;
 }
 
 function getEditorValue() {
