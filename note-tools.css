@@ -2062,9 +2062,13 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 .note-rendered h2,
 .note-rendered h3,
 .note-rendered h4,
+.note-rendered h5,
+.note-rendered h6,
 .note-view .markdown-body h2,
 .note-view .markdown-body h3,
-.note-view .markdown-body h4 {
+.note-view .markdown-body h4,
+.note-view .markdown-body h5,
+.note-view .markdown-body h6 {
   margin: 1.65rem 0 0.65rem;
   color: var(--note-text);
   font-weight: 650;
@@ -2072,13 +2076,125 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 
 .note-rendered p,
 .note-rendered ul,
+.note-rendered ol,
 .note-rendered blockquote,
 .note-rendered pre,
 .note-view .markdown-body p,
 .note-view .markdown-body ul,
+.note-view .markdown-body ol,
 .note-view .markdown-body blockquote,
 .note-view .markdown-body pre {
   margin: 0 0 0.9rem;
+}
+
+.note-rendered ul,
+.note-rendered ol,
+.note-view .markdown-body ul,
+.note-view .markdown-body ol {
+  padding-left: 1.5rem;
+}
+
+.note-rendered li + li,
+.note-view .markdown-body li + li {
+  margin-top: 0.24rem;
+}
+
+.note-rendered .contains-task-list,
+.note-rendered ul:has(.task-checkbox),
+.note-view .markdown-body ul:has(.task-checkbox),
+.note-view .markdown-body .contains-task-list {
+  padding-left: 0.12rem;
+  list-style: none;
+}
+
+.note-rendered .task-list-item,
+.note-rendered li:has(> .task-checkbox),
+.note-view .markdown-body li:has(> .task-checkbox),
+.note-view .markdown-body .task-list-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.note-rendered .task-checkbox,
+.note-view .markdown-body .task-checkbox {
+  position: relative;
+  width: 16px;
+  height: 16px;
+  margin-top: 0.38em;
+  border: 1px solid #b9b8b3;
+  border-radius: 3px;
+  background: #ffffff;
+}
+
+.note-rendered .task-checkbox.is-checked,
+.note-view .markdown-body .task-checkbox.is-checked {
+  border-color: var(--note-blue);
+  background: var(--note-blue);
+}
+
+.note-rendered .task-checkbox.is-checked::after,
+.note-view .markdown-body .task-checkbox.is-checked::after {
+  position: absolute;
+  top: 2px;
+  left: 5px;
+  width: 4px;
+  height: 8px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  content: "";
+  transform: rotate(45deg);
+}
+
+.note-rendered table,
+.note-view .markdown-body table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 1rem 0 1.2rem;
+  overflow-x: auto;
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+.note-rendered th,
+.note-rendered td,
+.note-view .markdown-body th,
+.note-view .markdown-body td {
+  min-width: 112px;
+  padding: 8px 12px;
+  border: 1px solid var(--note-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.note-rendered th,
+.note-view .markdown-body th {
+  background: #f7f7f5;
+  font-weight: 600;
+}
+
+.note-rendered :is(th, td)[align="center"],
+.note-view .markdown-body :is(th, td)[align="center"] {
+  text-align: center;
+}
+
+.note-rendered :is(th, td)[align="right"],
+.note-view .markdown-body :is(th, td)[align="right"] {
+  text-align: right;
+}
+
+.note-rendered hr,
+.note-view .markdown-body hr {
+  margin: 1.6rem 0;
+  border: 0;
+  border-top: 1px solid var(--note-line);
+}
+
+.note-rendered del,
+.note-view .markdown-body del {
+  color: var(--note-muted);
 }
 
 .note-rendered code,

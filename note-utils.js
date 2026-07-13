@@ -159,6 +159,8 @@ function mergeRemotePosts(localData, remoteData) {
 
 function markdownToHtml(markdown = "") {
   const cleanMarkdown = String(markdown).replace(/<!--tomfng-image-upload:[^>]+-->/g, "");
+  const fullMarkdown = renderFullMarkdown(cleanMarkdown);
+  if (fullMarkdown !== null) return fullMarkdown;
   const segments = cleanMarkdown.split(/```/);
   return segments
     .map((segment, index) => {
@@ -169,6 +171,64 @@ function markdownToHtml(markdown = "") {
       return renderBlocks(segment);
     })
     .join("");
+}
+
+function renderFullMarkdown(markdown) {
+  const browser = globalThis.window || globalThis;
+  const markedLibrary = browser.marked;
+  const sanitizer = browser.DOMPurify;
+  if (
+    typeof markedLibrary?.parse !== "function"
+    || typeof markedLibrary?.Renderer !== "function"
+    || typeof sanitizer?.sanitize !== "function"
+  ) return null;
+
+  const renderer = new markedLibrary.Renderer();
+  renderer.html = ({ text }) => escapeHtml(text);
+  renderer.link = function renderSafeLink({ href, title, tokens }) {
+    const label = this.parser.parseInline(tokens);
+    const url = safeRenderedUrl(href, false);
+    if (!url) return label;
+    const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
+    const externalAttributes = /^https?:\/\//i.test(url) ? ' target="_blank" rel="noopener noreferrer"' : "";
+    return `<a href="${escapeHtml(url)}"${titleAttribute}${externalAttributes}>${label}</a>`;
+  };
+  renderer.image = ({ href, title, text }) => {
+    const url = safeRenderedUrl(href, true);
+    if (!url) return escapeHtml(text || "");
+    const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(text || "")}" loading="lazy" decoding="async"${titleAttribute}>`;
+  };
+  renderer.checkbox = ({ checked }) => (
+    `<span class="task-checkbox${checked ? " is-checked" : ""}" role="checkbox" aria-checked="${checked ? "true" : "false"}" aria-disabled="true"></span>`
+  );
+
+  try {
+    const html = markedLibrary.parse(String(markdown || ""), {
+      async: false,
+      breaks: false,
+      gfm: true,
+      renderer
+    });
+    if (typeof html !== "string") return null;
+    return sanitizer.sanitize(html, {
+      ADD_ATTR: ["target"],
+      ALLOW_DATA_ATTR: false,
+      ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|\/(?!\/)|#|(?:\.{1,2}\/)?(?![a-z][a-z0-9+.-]*:|\/\/|\\)[^\s<>]+$)/i,
+      FORBID_ATTR: ["style"],
+      FORBID_TAGS: ["button", "embed", "form", "iframe", "input", "object", "option", "script", "select", "style", "textarea"]
+    });
+  } catch {
+    return null;
+  }
+}
+
+function safeRenderedUrl(value, imageOnly) {
+  const url = String(value || "").trim().replace(/\s/g, "%20").replace(/\)/g, "%29");
+  if (/^https?:\/\/[^\s]+$/i.test(url) || /^\/(?!\/)[^\s]+$/.test(url)) return url;
+  if (!imageOnly && (/^mailto:[^\s]+$/i.test(url) || /^#[^\s]+$/.test(url))) return url;
+  if (/^(?:\.{1,2}\/)?(?![a-z][a-z0-9+.-]*:|\/\/|\\)[^\s<>]+$/i.test(url)) return url;
+  return "";
 }
 
 function renderBlocks(markdown) {
