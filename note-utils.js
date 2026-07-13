@@ -396,23 +396,39 @@ function safeClipboardUrl(value, imageOnly) {
 }
 
 function findMarkdownLinkAt(line, ch) {
+  const resource = findMarkdownInlineResourceAt(line, ch, false);
+  if (!resource) return null;
+  return resource;
+}
+
+function findMarkdownImageAt(line, ch) {
+  const resource = findMarkdownInlineResourceAt(line, ch, true);
+  if (!resource) return null;
+  const { label, ...image } = resource;
+  return { ...image, alt: label };
+}
+
+function findMarkdownInlineResourceAt(line, ch, imageOnly) {
   const value = String(line || "");
   const cursor = Math.max(0, Math.min(value.length, Number(ch) || 0));
 
   for (let open = 0; open < value.length; open += 1) {
-    if (value[open] !== "[" || isEscapedMarkdownCharacter(value, open) || value[open - 1] === "!") continue;
+    if (value[open] !== "[" || isEscapedMarkdownCharacter(value, open)) continue;
+    const isImage = value[open - 1] === "!" && !isEscapedMarkdownCharacter(value, open - 1);
+    if (isImage !== imageOnly) continue;
     const labelClose = findBalancedMarkdownDelimiter(value, open, "[", "]");
     if (labelClose < 0 || value[labelClose + 1] !== "(") continue;
     const destinationClose = findBalancedMarkdownDelimiter(value, labelClose + 1, "(", ")");
     if (destinationClose < 0) continue;
-    if (cursor < open || cursor > destinationClose + 1) {
+    const resourceFrom = isImage ? open - 1 : open;
+    if (cursor < resourceFrom || cursor > destinationClose + 1) {
       open = destinationClose;
       continue;
     }
 
     const destination = parseMarkdownLinkDestination(value.slice(labelClose + 2, destinationClose));
     return {
-      from: open,
+      from: resourceFrom,
       to: destinationClose + 1,
       label: unescapeMarkdownLinkText(value.slice(open + 1, labelClose)),
       url: destination.url,
@@ -475,14 +491,30 @@ function normalizeMarkdownLinkUrl(value) {
   return "";
 }
 
-function formatMarkdownLink(label, url, titleSuffix = "") {
-  const text = String(label || "")
+function normalizeMarkdownImageUrl(value) {
+  const url = normalizeMarkdownLinkUrl(value);
+  if (!url || /^(?:mailto:|#)/i.test(url)) return "";
+  return url;
+}
+
+function escapeMarkdownInlineLabel(value) {
+  return String(value || "")
     .replace(/\\/g, "\\\\")
     .replace(/([\[\]])/g, "\\$1")
     .replace(/[\r\n]+/g, " ");
+}
+
+function formatMarkdownLink(label, url, titleSuffix = "") {
+  const text = escapeMarkdownInlineLabel(label);
   const destination = normalizeMarkdownLinkUrl(url);
   if (!text.trim() || !destination) return "";
   return `[${text}](${destination}${String(titleSuffix || "")})`;
+}
+
+function formatMarkdownImage(alt, url, titleSuffix = "") {
+  const destination = normalizeMarkdownImageUrl(url);
+  if (!destination) return "";
+  return `![${escapeMarkdownInlineLabel(alt)}](${destination}${String(titleSuffix || "")})`;
 }
 
 function htmlTableToMarkdown(table) {
@@ -952,7 +984,9 @@ window.TomfngNoteTools = {
   escapeHtml,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  findMarkdownImageAt,
   findMarkdownLinkAt,
+  formatMarkdownImage,
   formatMarkdownLink,
   formatDate,
   getMarkdownTableContext,
@@ -966,6 +1000,7 @@ window.TomfngNoteTools = {
   noteContentFingerprint,
   normalizeCategory,
   normalizeEditorViewState,
+  normalizeMarkdownImageUrl,
   normalizeMarkdownLinkUrl,
   normalizeNote,
   normalizeNotesData,

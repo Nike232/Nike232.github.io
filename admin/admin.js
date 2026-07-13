@@ -10,7 +10,9 @@ const {
   escapeHtml,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  findMarkdownImageAt,
   findMarkdownLinkAt,
+  formatMarkdownImage,
   formatMarkdownLink,
   formatDate,
   getMarkdownTableContext,
@@ -23,6 +25,7 @@ const {
   noteContentFingerprint,
   normalizeCategory,
   normalizeEditorViewState,
+  normalizeMarkdownImageUrl,
   normalizeMarkdownLinkUrl,
   normalizeNote,
   normalizeNotesData,
@@ -186,6 +189,11 @@ const elements = {
   linkLabel: root.querySelector("#editor-link-label"),
   linkUrl: root.querySelector("#editor-link-url"),
   linkError: root.querySelector("#editor-link-error"),
+  resourceLabelIcon: root.querySelector("[data-resource-label-icon]"),
+  resourceUrlIcon: root.querySelector("[data-resource-url-icon]"),
+  linkOpen: root.querySelector('[data-link-action="open"]'),
+  linkRemove: root.querySelector('[data-link-action="remove"]'),
+  linkApply: root.querySelector('[data-link-action="apply"]'),
   tableToolbar: root.querySelector("#editor-table-toolbar"),
   blockToggle: root.querySelector("#editor-block-toggle"),
   blockMenu: root.querySelector("#editor-block-menu"),
@@ -835,13 +843,30 @@ function bindEditorLinkEditing() {
 
   wrapper.addEventListener("click", (event) => {
     if (state.sourceMode || event.button !== 0) return;
-    const target = event.target.closest?.("span.cm-link, span.cm-url, span.hmd-link-icon");
+    const imageTarget = event.target.closest?.("img.hmd-image, span.cm-image, span.cm-formatting-image");
+    const target = imageTarget || event.target.closest?.("span.cm-link, span.cm-url, span.hmd-link-icon");
     if (!target) return;
     const position = cm.coordsChar({ left: event.clientX, top: event.clientY }, "window");
-    const parsed = findMarkdownLinkAt(cm.getLine(position.line), position.ch);
+    const parsed = imageTarget
+      ? findMarkdownImageAt(cm.getLine(position.line), position.ch)
+      : findMarkdownLinkAt(cm.getLine(position.line), position.ch);
     if (!parsed) return;
-    openLinkPopover(linkContextFromParsed(position.line, parsed), { focus: "url" });
-  });
+    const context = imageTarget
+      ? imageContextFromParsed(position.line, parsed)
+      : linkContextFromParsed(position.line, parsed);
+    if (imageTarget) {
+      context.block = cm.getLine(position.line).trim() === cm.getRange(context.from, context.to);
+      context.anchor = {
+        left: event.clientX,
+        right: event.clientX,
+        top: event.clientY,
+        bottom: event.clientY
+      };
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    openLinkPopover(context, { focus: "url" });
+  }, true);
 }
 
 function decorateEditorFootnotes(_cm, _line, element) {
@@ -1016,6 +1041,7 @@ function applyLinkCommand(cm) {
     label,
     url: "",
     titleSuffix: "",
+    type: "link",
     isNew: true
   }, { focus: label ? "url" : "label" });
 }
@@ -1037,6 +1063,19 @@ function linkContextFromParsed(line, parsed) {
     label: parsed.label,
     url: parsed.url,
     titleSuffix: parsed.titleSuffix,
+    type: "link",
+    isNew: false
+  };
+}
+
+function imageContextFromParsed(line, parsed) {
+  return {
+    from: { line, ch: parsed.from },
+    to: { line, ch: parsed.to },
+    label: parsed.alt,
+    url: parsed.url,
+    titleSuffix: parsed.titleSuffix,
+    type: "image",
     isNew: false
   };
 }
@@ -1050,17 +1089,39 @@ function openLinkPopover(context, { focus = "url" } = {}) {
   clearLinkPopoverError();
   state.linkContext = context;
   state.linkPopoverOpen = true;
+  configureInlineResourcePopover(context);
   elements.linkLabel.value = context.label || "";
   elements.linkUrl.value = context.url || "";
   elements.linkPopover.hidden = false;
   elements.linkPopover.classList.toggle("is-new", Boolean(context.isNew));
-  elements.linkPopover.querySelector('[data-link-action="remove"]').disabled = Boolean(context.isNew);
+  elements.linkRemove.disabled = Boolean(context.isNew);
   positionLinkPopover();
   window.requestAnimationFrame(() => {
     const input = focus === "label" ? elements.linkLabel : elements.linkUrl;
     input.focus();
     input.select();
   });
+}
+
+function configureInlineResourcePopover(context) {
+  const image = context.type === "image";
+  const noun = image ? "图片" : "链接";
+  elements.linkPopover.classList.toggle("is-image", image);
+  elements.linkPopover.setAttribute("aria-label", `编辑${noun}`);
+  elements.resourceLabelIcon.className = image ? "fa-regular fa-image" : "fa-solid fa-font";
+  elements.resourceUrlIcon.className = "fa-solid fa-link";
+  elements.linkLabel.placeholder = image ? "图片说明（可选）" : "链接文字";
+  elements.linkLabel.setAttribute("aria-label", image ? "图片说明" : "链接文字");
+  elements.linkUrl.placeholder = image ? "图片地址" : "粘贴或输入链接";
+  elements.linkUrl.setAttribute("aria-label", image ? "图片地址" : "链接地址");
+  setInlineResourceActionLabel(elements.linkOpen, image ? "查看原图" : "打开链接");
+  setInlineResourceActionLabel(elements.linkRemove, image ? "移除图片" : "移除链接");
+  setInlineResourceActionLabel(elements.linkApply, image ? "应用图片" : "应用链接");
+}
+
+function setInlineResourceActionLabel(button, label) {
+  button.title = label;
+  button.setAttribute("aria-label", label);
 }
 
 function closeLinkPopover({ restoreFocus = false } = {}) {
@@ -1072,6 +1133,10 @@ function closeLinkPopover({ restoreFocus = false } = {}) {
   clearLinkPopoverError();
   if (!restoreFocus || !state.editor || !context) return;
   state.editor.focus();
+  if (context.type === "image") {
+    state.editor.setCursor(imageReturnCursor(context, state.editor, context.to.ch));
+    return;
+  }
   const vim = state.editorMode === "vim" ? state.editor.state?.vim : null;
   if (vim && !vim.insertMode && !vim.visualMode) state.editor.setCursor(context.from);
   else state.editor.setSelection(context.from, context.to);
@@ -1099,57 +1164,71 @@ function applyLinkPopover() {
   const context = state.linkContext;
   const cm = state.editor;
   if (!context || !cm) return;
+  const image = context.type === "image";
+  const noun = image ? "图片" : "链接";
   const label = elements.linkLabel.value.trim();
-  const url = normalizeMarkdownLinkUrl(elements.linkUrl.value);
-  if (!label) {
+  const url = image
+    ? normalizeMarkdownImageUrl(elements.linkUrl.value)
+    : normalizeMarkdownLinkUrl(elements.linkUrl.value);
+  if (!image && !label) {
     showLinkPopoverError("请输入链接文字", elements.linkLabel);
     return;
   }
   if (!url) {
-    showLinkPopoverError("链接地址无效", elements.linkUrl);
+    showLinkPopoverError(`${noun}地址无效`, elements.linkUrl);
     return;
   }
-  const markdown = formatMarkdownLink(label, url, context.titleSuffix);
+  const markdown = image
+    ? formatMarkdownImage(label, url, context.titleSuffix)
+    : formatMarkdownLink(label, url, context.titleSuffix);
   if (!markdown || !linkContextStillValid(context)) {
     closeLinkPopover();
-    setStatus("链接位置已经发生变化，请重试", true);
+    setStatus(`${noun}位置已经发生变化，请重试`, true);
     return;
   }
 
   closeLinkPopover();
   cm.operation(() => {
-    cm.replaceRange(markdown, context.from, context.to, "+link-edit");
-    cm.setCursor({ line: context.from.line, ch: context.from.ch + markdown.length });
+    cm.replaceRange(markdown, context.from, context.to, image ? "+image-edit" : "+link-edit");
+    cm.setCursor(image
+      ? imageReturnCursor(context, cm, context.from.ch + markdown.length)
+      : { line: context.from.line, ch: context.from.ch + markdown.length });
   });
   cm.focus();
-  setStatus(context.isNew ? "已插入链接" : "已更新链接");
+  setStatus(image ? "已更新图片" : context.isNew ? "已插入链接" : "已更新链接");
 }
 
 function removeLinkFromPopover() {
   const context = state.linkContext;
   const cm = state.editor;
   if (!context || !cm || context.isNew || !linkContextStillValid(context)) return;
-  const label = elements.linkLabel.value.trim() || context.label;
+  const image = context.type === "image";
+  const replacement = image ? "" : elements.linkLabel.value.trim() || context.label;
+  const range = image ? imageRemovalRange(context, cm) : { from: context.from, to: context.to };
   closeLinkPopover();
   cm.operation(() => {
-    cm.replaceRange(label, context.from, context.to, "+link-edit");
-    cm.setCursor({ line: context.from.line, ch: context.from.ch + label.length });
+    cm.replaceRange(replacement, range.from, range.to, image ? "+image-edit" : "+link-edit");
+    cm.setCursor({ line: range.from.line, ch: range.from.ch + replacement.length });
   });
   cm.focus();
-  setStatus("已移除链接");
+  setStatus(image ? "已移除图片" : "已移除链接");
 }
 
 function openLinkFromPopover() {
-  const url = normalizeMarkdownLinkUrl(elements.linkUrl.value);
+  const image = state.linkContext?.type === "image";
+  const noun = image ? "图片" : "链接";
+  const url = image
+    ? normalizeMarkdownImageUrl(elements.linkUrl.value)
+    : normalizeMarkdownLinkUrl(elements.linkUrl.value);
   if (!url) {
-    showLinkPopoverError("链接地址无效", elements.linkUrl);
+    showLinkPopoverError(`${noun}地址无效`, elements.linkUrl);
     return;
   }
   let href = url;
   try {
     if (!/^(?:https?:|mailto:)/i.test(url)) href = new URL(url, window.location.href).href;
   } catch {
-    showLinkPopoverError("链接地址无效", elements.linkUrl);
+    showLinkPopoverError(`${noun}地址无效`, elements.linkUrl);
     return;
   }
   window.open(href, "_blank", "noopener,noreferrer");
@@ -1159,8 +1238,33 @@ function linkContextStillValid(context) {
   const line = state.editor?.getLine(context.from.line);
   if (typeof line !== "string" || context.from.line !== context.to.line || context.to.ch > line.length) return false;
   if (context.isNew) return true;
-  const parsed = findMarkdownLinkAt(line, context.from.ch);
+  const parsed = context.type === "image"
+    ? findMarkdownImageAt(line, context.from.ch)
+    : findMarkdownLinkAt(line, context.from.ch);
   return Boolean(parsed && parsed.from === context.from.ch && parsed.to === context.to.ch);
+}
+
+function imageReturnCursor(context, cm, fallbackCh) {
+  if (context.block && context.from.line < cm.lastLine()) return { line: context.from.line + 1, ch: 0 };
+  return { line: context.from.line, ch: fallbackCh };
+}
+
+function imageRemovalRange(context, cm) {
+  if (!context.block) return { from: context.from, to: context.to };
+  const line = context.from.line;
+  if (line < cm.lastLine()) {
+    const nextLine = cm.getLine(line + 1);
+    const toLine = !nextLine.trim() && line + 1 < cm.lastLine() ? line + 2 : line + 1;
+    return { from: { line, ch: 0 }, to: { line: toLine, ch: 0 } };
+  }
+  if (line > cm.firstLine()) {
+    const previous = line - 1;
+    return {
+      from: { line: previous, ch: cm.getLine(previous).length },
+      to: context.to
+    };
+  }
+  return { from: context.from, to: context.to };
 }
 
 function clearLinkPopoverError() {
@@ -1184,8 +1288,8 @@ function showLinkPopoverError(message, input) {
 function positionLinkPopover() {
   if (!state.linkPopoverOpen || !state.editor || !state.linkContext) return;
   const popover = elements.linkPopover;
-  const start = state.editor.charCoords(state.linkContext.from, "window");
-  const end = state.editor.charCoords(state.linkContext.to, "window");
+  const start = state.linkContext.anchor || state.editor.charCoords(state.linkContext.from, "window");
+  const end = state.linkContext.anchor || state.editor.charCoords(state.linkContext.to, "window");
   const width = popover.offsetWidth || 392;
   const height = popover.offsetHeight || 90;
   const center = (Math.min(start.left, end.left) + Math.max(start.right, end.right)) / 2;
