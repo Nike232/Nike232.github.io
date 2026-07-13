@@ -15,6 +15,7 @@ const {
   makeId,
   makeSlug,
   markdownBlockTemplate,
+  markdownFootnoteTemplate,
   markdownToHtml,
   mergeRemotePosts,
   noteContentFingerprint,
@@ -73,6 +74,7 @@ const SLASH_COMMAND_KEYWORDS = {
   mermaid: "流程图 图表 架构图 时序图 diagram flowchart mermaid",
   "math-block": "公式 数学 LaTeX TeX equation math",
   table: "表格 table grid",
+  footnote: "脚注 注释 引用 footnote reference",
   "horizontal-rule": "分割线 横线 divider separator hr",
   image: "图片 图像 照片 上传 image photo upload"
 };
@@ -685,6 +687,7 @@ function initMarkdownEditor() {
     : window.CodeMirror.fromTextArea(fields.content, editorOptions);
 
   state.editor.on("keydown", handleEditorRawShortcut);
+  state.editor.on("renderLine", decorateEditorFootnotes);
   bindEditorImageTransfers();
   bindEditorTaskToggles();
 
@@ -732,6 +735,7 @@ function initMarkdownEditor() {
   });
   syncEditorCursorStyle();
   setEditorFocusState(state.editor.hasFocus?.());
+  decorateEditorFootnotes(null, null, state.editor.getWrapperElement?.());
   updateEditorStats();
 }
 
@@ -796,6 +800,15 @@ function bindEditorTaskToggles() {
     });
     cm.focus();
   }, true);
+}
+
+function decorateEditorFootnotes(_cm, _line, element) {
+  element?.querySelectorAll?.("span.cm-hmd-footref:not(.cm-formatting)").forEach((reference) => {
+    const label = reference.textContent.replace(/^\^/, "").trim();
+    if (!label) return;
+    reference.dataset.footnoteLabel = label;
+    reference.setAttribute("aria-label", `脚注 ${label}`);
+  });
 }
 
 function handleSmartPaste(event) {
@@ -1002,6 +1015,8 @@ function applyBlockCommand(command, cm = state.editor) {
       insertMathBlock(cm);
     } else if (command === "table") {
       insertTableBlock(cm);
+    } else if (command === "footnote") {
+      insertFootnote(cm);
     } else if (command === "horizontal-rule") {
       const template = markdownBlockTemplate("horizontal-rule");
       insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
@@ -1026,8 +1041,12 @@ function positionBlockMenu() {
   const width = menu.offsetWidth || 300;
   const height = menu.offsetHeight || 224;
   const x = Math.max(8, Math.min(window.innerWidth - width - 8, anchor.left));
+  const navbarBottom = document.querySelector(".navbar-container")?.getBoundingClientRect().bottom || 0;
+  const minY = Math.max(8, navbarBottom + 8);
+  const maxY = Math.max(minY, window.innerHeight - height - 8);
   const below = anchor.bottom + 8;
-  const y = below + height <= window.innerHeight - 8 ? below : Math.max(8, anchor.top - height - 8);
+  const above = anchor.top - height - 8;
+  const y = below <= maxY + 8 ? Math.min(below, maxY) : Math.max(minY, above);
   positionFloatingElement(menu, x, y);
 }
 
@@ -1260,6 +1279,22 @@ function insertMathBlock(cm) {
 function insertTableBlock(cm) {
   const template = markdownBlockTemplate("table");
   insertStandaloneBlock(cm, template.body, template.selectionStart, template.selectionEnd);
+}
+
+function insertFootnote(cm) {
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const template = markdownFootnoteTemplate(cm.getValue(), cm.getRange(from, to));
+  cm.replaceRange(template.reference, from, to, "+footnote");
+  const value = cm.getValue();
+  const prefix = value.endsWith("\n\n") ? "" : value.endsWith("\n") ? "\n" : "\n\n";
+  const startIndex = value.length + prefix.length;
+  const end = { line: cm.lastLine(), ch: cm.getLine(cm.lastLine()).length };
+  cm.replaceRange(`${prefix}${template.definition}`, end, end, "+footnote");
+  cm.setSelection(
+    cm.posFromIndex(startIndex + template.selectionStart),
+    cm.posFromIndex(startIndex + template.selectionEnd)
+  );
 }
 
 function insertStandaloneBlock(cm, body, selectionStart = body.length, selectionEnd = selectionStart) {

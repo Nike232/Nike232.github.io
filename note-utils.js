@@ -177,6 +177,7 @@ function renderFullMarkdown(markdown) {
   const browser = globalThis.window || globalThis;
   const markedLibrary = browser.marked;
   const mathExtension = browser.markedKatex;
+  const footnoteExtension = browser.markedFootnote;
   const sanitizer = browser.DOMPurify;
   if (
     typeof markedLibrary?.parse !== "function"
@@ -222,6 +223,12 @@ function renderFullMarkdown(markdown) {
         trust: false
       }));
     }
+    if (typeof footnoteExtension === "function" && typeof parser.use === "function") {
+      parser.use(footnoteExtension({
+        description: "脚注",
+        backRefLabel: "返回引用 {0}"
+      }));
+    }
     const html = parser.parse(String(markdown || ""), {
       async: false,
       breaks: false,
@@ -230,7 +237,7 @@ function renderFullMarkdown(markdown) {
     });
     if (typeof html !== "string") return null;
     return sanitizer.sanitize(html, {
-      ADD_ATTR: ["encoding", "target"],
+      ADD_ATTR: ["data-footnote-backref", "data-footnote-ref", "data-footnotes", "encoding", "target"],
       ADD_TAGS: ["annotation", "semantics"],
       ALLOW_DATA_ATTR: false,
       ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto):|\/(?!\/)|#|(?:\.{1,2}\/)?(?![a-z][a-z0-9+.-]*:|\/\/|\\)[^\s<>]+$)/i,
@@ -795,6 +802,28 @@ function toggleMarkdownTask(line) {
   };
 }
 
+function markdownFootnoteTemplate(markdown = "", selected = "") {
+  let number = 0;
+  const source = String(markdown || "");
+  const pattern = /\[\^(\d+)\]/g;
+  let match = pattern.exec(source);
+  while (match) {
+    number = Math.max(number, Number(match[1]) || 0);
+    match = pattern.exec(source);
+  }
+  const label = String(number + 1);
+  const content = String(selected || "").trim() || "脚注内容";
+  const definitionText = content.replace(/\n/g, "\n    ");
+  const definition = `[^${label}]: ${definitionText}`;
+  const selectionStart = definition.indexOf(definitionText);
+  return {
+    reference: `[^${label}]`,
+    definition,
+    selectionStart,
+    selectionEnd: definition.length
+  };
+}
+
 function markdownBlockTemplate(command, selected = "") {
   const selection = String(selected || "");
   if (command === "mermaid") {
@@ -839,6 +868,7 @@ window.TomfngNoteTools = {
   makeSlug,
   markdownToHtml,
   markdownBlockTemplate,
+  markdownFootnoteTemplate,
   editMarkdownTable,
   mergeRemotePosts,
   noteContentFingerprint,

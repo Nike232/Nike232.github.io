@@ -1477,6 +1477,72 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   text-underline-offset: 3px;
 }
 
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) span.cm-hmd-footref {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 1px 3px;
+  border-radius: 3px;
+  color: #416c55;
+  background: #edf3ee;
+  font-family: var(--note-mono) !important;
+  font-size: 0.68em !important;
+  font-weight: 650;
+  line-height: 1.25;
+  text-decoration: none;
+  vertical-align: super;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) span.cm-formatting.cm-hmd-footref {
+  width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0 !important;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) span.cm-hmd-footref:not(.cm-formatting) {
+  position: relative;
+  min-width: 1.75em;
+  color: transparent;
+  text-align: center;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) span.cm-hmd-footref:not(.cm-formatting)::after {
+  position: absolute;
+  inset: 1px 3px;
+  display: grid;
+  place-items: center;
+  color: #416c55;
+  content: attr(data-footnote-label);
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-footnote {
+  position: relative;
+  min-height: 1.6em;
+  margin: 0.16rem 0 !important;
+  padding-left: 1.45rem !important;
+  color: #77746d;
+  font-size: 0.92rem !important;
+  line-height: 1.75 !important;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-footnote::before {
+  position: absolute;
+  top: 0.78em;
+  left: 0.2rem;
+  width: 0.72rem;
+  height: 1px;
+  background: #d3d8d3;
+  content: "";
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-footnote span.cm-hmd-footnote {
+  color: #52735f;
+  font-family: var(--note-mono) !important;
+  font-size: 0.78em !important;
+  text-decoration: none;
+}
+
 .editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-table-row {
   width: max-content;
   min-width: min(100%, 520px);
@@ -2564,6 +2630,80 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   text-decoration: underline;
   text-decoration-color: rgba(35, 131, 226, 0.28);
   text-underline-offset: 3px;
+}
+
+.note-rendered a[data-footnote-ref],
+.note-view .markdown-body a[data-footnote-ref],
+.article-content a[data-footnote-ref] {
+  margin: 0 1px;
+  padding: 0 2px;
+  color: #416c55;
+  font-size: 0.78em;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.note-rendered .footnotes,
+.note-view .markdown-body .footnotes,
+.article-content .footnotes {
+  margin-top: 2.8rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--note-line, #e8e7e3);
+  color: var(--note-muted, #787774);
+  font-size: 0.88em;
+  line-height: 1.72;
+}
+
+.note-rendered .footnotes .sr-only,
+.note-view .markdown-body .footnotes .sr-only,
+.article-content .footnotes .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+
+.note-rendered .footnotes ol,
+.note-view .markdown-body .footnotes ol,
+.article-content .footnotes ol {
+  margin: 0;
+  padding-left: 1.35rem;
+}
+
+.note-rendered .footnotes li,
+.note-view .markdown-body .footnotes li,
+.article-content .footnotes li {
+  padding-left: 0.24rem;
+  scroll-margin-top: 96px;
+}
+
+.note-rendered .footnotes p,
+.note-view .markdown-body .footnotes p,
+.article-content .footnotes p {
+  margin: 0.25rem 0;
+}
+
+.note-rendered a[data-footnote-backref],
+.note-view .markdown-body a[data-footnote-backref],
+.article-content a[data-footnote-backref] {
+  display: inline-block;
+  margin-left: 0.35rem;
+  color: #68806f;
+  font-size: 0.9em;
+  text-decoration: none;
+  transition: color 140ms ease, transform 140ms ease;
+}
+
+.note-rendered a[data-footnote-backref]:hover,
+.note-view .markdown-body a[data-footnote-backref]:hover,
+.article-content a[data-footnote-backref]:hover {
+  color: #365d48;
+  transform: translateX(-1px);
 }
 
 .note-rendered h2,
