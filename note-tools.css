@@ -24,7 +24,7 @@
 
 .page-template-container:has(.note-tools) {
   padding: 0 !important;
-  overflow: hidden;
+  overflow: visible;
   border: 0 !important;
   border-radius: 0 !important;
   background: #ffffff !important;
@@ -134,9 +134,11 @@
   scrollbar-width: thin;
 }
 
-.reader-rail {
+.reader-rail,
+.admin-sidebar {
   position: sticky;
   top: var(--navbar-height, 70px);
+  align-self: start;
   max-height: calc(100dvh - var(--navbar-height, 70px));
 }
 

@@ -363,6 +363,45 @@ function cleanHeadingText(value) {
     .trim();
 }
 
+function normalizeEditorViewState(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const notesSource = source.notes && typeof source.notes === "object" ? source.notes : {};
+  const notes = {};
+  const blockedKeys = new Set(["__proto__", "constructor", "prototype"]);
+  Object.entries(notesSource).slice(-50).forEach(([rawId, rawView]) => {
+    const id = String(rawId || "").trim();
+    if (!id || blockedKeys.has(id) || !rawView || typeof rawView !== "object") return;
+    notes[id] = {
+      cursor: normalizeEditorPoint(rawView.cursor),
+      scrollTop: nonNegativeNumber(rawView.scrollTop),
+      scrollLeft: nonNegativeNumber(rawView.scrollLeft),
+      pageScrollY: nonNegativeNumber(rawView.pageScrollY)
+    };
+  });
+
+  const rawCategory = String(source.category || "all").trim();
+  return {
+    version: 1,
+    selectedId: String(source.selectedId || ""),
+    category: rawCategory === "all" ? "all" : normalizeCategory(rawCategory),
+    sidebarMode: source.sidebarMode === "outline" ? "outline" : "pages",
+    notes
+  };
+}
+
+function normalizeEditorPoint(value) {
+  const source = value && typeof value === "object" ? value : {};
+  return {
+    line: Math.floor(nonNegativeNumber(source.line)),
+    ch: Math.floor(nonNegativeNumber(source.ch))
+  };
+}
+
+function nonNegativeNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
 function stripMarkdownBlockPrefix(line) {
   const value = String(line || "");
   const indent = /^\s*/.exec(value)?.[0] || "";
@@ -449,6 +488,7 @@ window.TomfngNoteTools = {
   mergeRemotePosts,
   noteContentFingerprint,
   normalizeCategory,
+  normalizeEditorViewState,
   normalizeNote,
   normalizeNotesData,
   normalizeTags,

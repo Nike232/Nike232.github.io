@@ -16,6 +16,7 @@ const {
   mergeRemotePosts,
   noteContentFingerprint,
   normalizeCategory,
+  normalizeEditorViewState,
   normalizeNote,
   normalizeNotesData,
   normalizeTags,
@@ -27,6 +28,7 @@ const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
 const SESSION_KEY = "tomfng-notes-admin-session";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
+const EDITOR_VIEW_KEY = "tomfng-notes-editor-view";
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const IMAGE_UPLOAD_TOKEN = "tomfng-image-upload";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -36,19 +38,24 @@ const DEFAULT_CONFIG = {
   apiBase: DEFAULT_API_BASE,
   sessionToken: ""
 };
+const initialEditorView = normalizeEditorViewState(loadEditorView());
 
 const state = {
   data: normalizeNotesData({ notes: [] }),
-  selectedId: null,
+  selectedId: initialEditorView.selectedId || null,
   dirty: false,
   remoteSha: null,
   config: loadConfig(),
   workspaceStarted: false,
   authUser: null,
   busy: false,
-  category: "all",
-  sidebarMode: "pages",
+  category: initialEditorView.category,
+  sidebarMode: initialEditorView.sidebarMode,
   editor: null,
+  editorNoteId: null,
+  editorSessions: new Map(),
+  editorView: initialEditorView,
+  editorViewTimer: null,
   editorMode: localStorage.getItem(EDITOR_MODE_KEY) === "vim" ? "vim" : "default",
   sourceMode: false,
   vimCursorMode: "normal",
@@ -142,7 +149,9 @@ async function startWorkspace() {
   const localData = loadWorkspace();
   if (localData) {
     state.data = normalizeNotesData(localData);
-    state.selectedId = state.data.notes[0]?.id || null;
+    state.selectedId = state.data.notes.some((note) => note.id === state.selectedId)
+      ? state.selectedId
+      : state.data.notes[0]?.id || null;
     const recovered = clearStaleImageUploadTokens();
     if (recovered) markDirty(`已清理 ${recovered} 个未完成的图片上传`);
     else setStatus("已载入本地草稿");
@@ -207,8 +216,9 @@ function bindWorkspaceEvents() {
   window.addEventListener("resize", positionBlockMenu);
   window.addEventListener("scroll", () => {
     if (state.blockMenuOpen) toggleBlockMenu(false);
+    scheduleEditorViewSave();
   }, { passive: true });
-  window.addEventListener("beforeunload", flushAutosave);
+  window.addEventListener("beforeunload", flushEditorSession);
 }
 
 async function checkSession() {
@@ -414,6 +424,7 @@ function initMarkdownEditor() {
     scheduleSelectionToolbar();
     scheduleTypewriterCenter();
     updateOutlineActiveState();
+    scheduleEditorViewSave();
   });
   state.editor.on("focus", () => {
     setEditorFocusState(true);
@@ -431,6 +442,7 @@ function initMarkdownEditor() {
     syncEditorCursorStyle();
     hideSelectionToolbar();
     if (state.blockMenuOpen) toggleBlockMenu(false);
+    scheduleEditorViewSave();
   });
   syncEditorCursorStyle();
   setEditorFocusState(state.editor.hasFocus?.());
@@ -1373,6 +1385,7 @@ function createNote() {
   state.selectedId = note.id;
   markDirty("新建页面");
   render();
+  focusNewNoteTitle();
 }
 
 function duplicateSelectedNote() {
@@ -1396,6 +1409,7 @@ function duplicateSelectedNote() {
   state.selectedId = copy.id;
   markDirty("已复制到本地");
   render();
+  focusNewNoteTitle();
 }
 
 async function deleteSelectedNote() {
@@ -1428,10 +1442,24 @@ async function deleteSelectedNote() {
   [...state.imageUploads.values()]
     .filter((task) => task.noteId === note.id)
     .forEach((task) => removeImageUploadTask(task));
+  discardEditorSession(note.id);
   state.data.notes = state.data.notes.filter((item) => item.id !== note.id);
   state.selectedId = state.data.notes[0]?.id || null;
   markDirty(published ? "已提交删除，网站正在更新" : "已删除本地草稿");
   render();
+}
+
+function focusNewNoteTitle() {
+  if (fields.title.disabled) return;
+  fields.title.focus();
+  fields.title.select();
+}
+
+function discardEditorSession(noteId) {
+  state.editorSessions.delete(noteId);
+  delete state.editorView.notes[noteId];
+  if (state.editorNoteId === noteId) state.editorNoteId = null;
+  persistEditorView();
 }
 
 function updateSelectedFromFields() {
@@ -1495,6 +1523,7 @@ function renderCategories() {
   const categories = getCategories();
   if (state.category !== "all" && !categories.includes(state.category)) {
     state.category = "all";
+    persistEditorView();
   }
   const buttons = ["all", ...categories].map((category) => {
     const label = category === "all" ? "全部" : category;
@@ -1512,6 +1541,7 @@ function renderCategories() {
       if (!visible.some((note) => note.id === state.selectedId)) {
         state.selectedId = visible[0]?.id || null;
       }
+      persistEditorView();
       render();
     });
   });
@@ -1556,6 +1586,7 @@ function renderList() {
 
 function setSidebarMode(mode) {
   state.sidebarMode = mode === "outline" ? "outline" : "pages";
+  persistEditorView();
   renderOutline();
   renderSidebarMode();
 }
@@ -1623,6 +1654,9 @@ function updateOutlineActiveState() {
 
 function renderEditor() {
   const note = getSelectedNote();
+  const switchedDocument = switchEditorDocument(note?.id || null);
+  const contentReloaded = Boolean(note && state.editor && state.editor.getValue() !== note.content);
+  if (!switchedDocument && contentReloaded) captureEditorView();
   const disabled = !note || state.busy;
   Object.values(fields).forEach((field) => {
     field.disabled = disabled;
@@ -1646,7 +1680,7 @@ function renderEditor() {
     fields.tags.value = "";
     fields.status.value = "draft";
     fields.summary.value = "";
-    setEditorValue("");
+    setEditorValue("", { force: switchedDocument });
     setEditorEnabled(false);
     elements.previewTitle.textContent = "未选择页面";
     elements.previewSummary.textContent = "";
@@ -1666,8 +1700,9 @@ function renderEditor() {
   fields.tags.value = note.tags.join(", ");
   fields.status.value = note.remotePath ? "published" : "draft";
   fields.summary.value = note.summary;
-  setEditorValue(note.content);
+  setEditorValue(note.content, { force: switchedDocument });
   setEditorEnabled(!state.busy);
+  if (switchedDocument || contentReloaded) restoreEditorSession(note);
   renderPreview(note);
   validateSelected();
 }
@@ -1688,11 +1723,11 @@ function getEditorValue() {
   return state.editor ? state.editor.getValue() : fields.content.value;
 }
 
-function setEditorValue(value) {
+function setEditorValue(value, { force = false } = {}) {
   const nextValue = String(value || "");
   fields.content.value = nextValue;
   if (!state.editor) return;
-  if (state.editor.getValue() === nextValue) {
+  if (!force && state.editor.getValue() === nextValue) {
     restorePendingImageUploads();
     updateEditorStats();
     return;
@@ -1703,6 +1738,140 @@ function setEditorValue(value) {
   state.syncingEditor = false;
   restorePendingImageUploads();
   updateEditorStats();
+}
+
+function switchEditorDocument(noteId) {
+  const nextId = noteId || null;
+  if (state.editorNoteId === nextId) return false;
+  captureEditorSession(state.editorNoteId);
+  state.editorNoteId = nextId;
+  persistEditorView();
+  return true;
+}
+
+function captureEditorSession(noteId = state.editorNoteId) {
+  if (!state.editor || !noteId) return;
+  const scroll = state.editor.getScrollInfo();
+  const selections = cloneEditorSelections(state.editor.listSelections());
+  const session = {
+    value: state.editor.getValue(),
+    history: state.editor.getHistory(),
+    selections,
+    scrollLeft: scroll.left,
+    scrollTop: scroll.top,
+    pageScrollY: window.scrollY
+  };
+  state.editorSessions.delete(noteId);
+  state.editorSessions.set(noteId, session);
+  while (state.editorSessions.size > 20) {
+    state.editorSessions.delete(state.editorSessions.keys().next().value);
+  }
+  rememberEditorView(noteId, selections[0]?.head, scroll);
+}
+
+function restoreEditorSession(note) {
+  if (!state.editor || !note) return;
+  const session = state.editorSessions.get(note.id);
+  const canRestoreHistory = session?.value === note.content;
+  const persisted = state.editorView.notes[note.id];
+  const selections = canRestoreHistory
+    ? session.selections
+    : persisted?.cursor
+      ? [{ anchor: persisted.cursor, head: persisted.cursor }]
+      : null;
+  const scrollLeft = canRestoreHistory ? session.scrollLeft : persisted?.scrollLeft;
+  const scrollTop = canRestoreHistory ? session.scrollTop : persisted?.scrollTop;
+  const pageScrollY = canRestoreHistory ? session.pageScrollY : persisted?.pageScrollY;
+
+  if (canRestoreHistory) {
+    try {
+      state.editor.setHistory(session.history);
+    } catch {
+      state.editor.clearHistory();
+    }
+  }
+  if (selections?.length) {
+    state.editor.setSelections(selections.map((range) => ({
+      anchor: clipEditorPosition(state.editor, range.anchor),
+      head: clipEditorPosition(state.editor, range.head)
+    })));
+  }
+  window.requestAnimationFrame?.(() => {
+    if (!state.editor || state.editorNoteId !== note.id) return;
+    state.editor.refresh();
+    state.editor.scrollTo(Number(scrollLeft) || 0, Number(scrollTop) || 0);
+    syncEditorCursorStyle();
+    window.requestAnimationFrame?.(() => {
+      if (state.editorNoteId !== note.id) return;
+      window.scrollTo(window.scrollX, Number(pageScrollY) || 0);
+    });
+  });
+}
+
+function cloneEditorSelections(selections) {
+  return Array.from(selections || [], (range) => ({
+    anchor: { line: range.anchor.line, ch: range.anchor.ch },
+    head: { line: range.head.line, ch: range.head.ch }
+  }));
+}
+
+function clipEditorPosition(cm, position) {
+  const firstLine = cm.firstLine();
+  const lastLine = cm.lastLine();
+  const line = Math.min(lastLine, Math.max(firstLine, Math.floor(Number(position?.line) || 0)));
+  const ch = Math.min(cm.getLine(line).length, Math.max(0, Math.floor(Number(position?.ch) || 0)));
+  return { line, ch };
+}
+
+function scheduleEditorViewSave() {
+  window.clearTimeout(state.editorViewTimer);
+  state.editorViewTimer = window.setTimeout(() => {
+    state.editorViewTimer = null;
+    captureEditorView();
+  }, 300);
+}
+
+function captureEditorView() {
+  if (!state.editor || !state.editorNoteId) {
+    persistEditorView();
+    return;
+  }
+  rememberEditorView(state.editorNoteId, state.editor.getCursor(), state.editor.getScrollInfo());
+}
+
+function rememberEditorView(noteId, cursor, scroll) {
+  if (!noteId) return;
+  delete state.editorView.notes[noteId];
+  state.editorView.notes[noteId] = {
+    cursor: {
+      line: Math.max(0, Math.floor(Number(cursor?.line) || 0)),
+      ch: Math.max(0, Math.floor(Number(cursor?.ch) || 0))
+    },
+    scrollTop: Math.max(0, Number(scroll?.top ?? scroll?.scrollTop) || 0),
+    scrollLeft: Math.max(0, Number(scroll?.left ?? scroll?.scrollLeft) || 0),
+    pageScrollY: Math.max(0, Number(window.scrollY) || 0)
+  };
+  persistEditorView();
+}
+
+function persistEditorView() {
+  state.editorView.selectedId = state.selectedId || "";
+  state.editorView.category = state.category;
+  state.editorView.sidebarMode = state.sidebarMode;
+  state.editorView = normalizeEditorViewState(state.editorView);
+  try {
+    localStorage.setItem(EDITOR_VIEW_KEY, JSON.stringify(state.editorView));
+  } catch {
+    // Editor position is a convenience; note autosave remains independent.
+  }
+}
+
+function flushEditorSession() {
+  window.clearTimeout(state.editorViewTimer);
+  state.editorViewTimer = null;
+  captureEditorSession();
+  persistEditorView();
+  flushAutosave();
 }
 
 function setEditorEnabled(enabled) {
@@ -1956,6 +2125,15 @@ function loadWorkspace() {
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
+  }
+}
+
+function loadEditorView() {
+  try {
+    const raw = localStorage.getItem(EDITOR_VIEW_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
   }
 }
 
