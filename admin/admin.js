@@ -25,6 +25,7 @@ const {
   normalizeTags,
   parseMarkdownSlashContext,
   stripMarkdownBlockPrefix,
+  toggleMarkdownTask,
   transformMarkdownBlockLines
 } = tools;
 
@@ -685,6 +686,7 @@ function initMarkdownEditor() {
 
   state.editor.on("keydown", handleEditorRawShortcut);
   bindEditorImageTransfers();
+  bindEditorTaskToggles();
 
   state.editor.on("change", (_cm, change) => {
     if (state.syncingEditor) return;
@@ -765,6 +767,35 @@ function bindEditorImageTransfers() {
     cm.setCursor(cm.coordsChar({ left: event.clientX, top: event.clientY }, "window"));
     insertImageUploads(files);
   });
+}
+
+function bindEditorTaskToggles() {
+  const cm = state.editor;
+  const wrapper = cm?.getWrapperElement?.();
+  if (!wrapper) return;
+
+  wrapper.addEventListener("click", (event) => {
+    const marker = event.target.closest?.("span.cm-formatting-task");
+    if (!marker || state.sourceMode || event.button !== 0) return;
+    const bounds = marker.getBoundingClientRect();
+    const line = cm.lineAtHeight((bounds.top + bounds.bottom) / 2, "window");
+    const toggled = toggleMarkdownTask(cm.getLine(line));
+    if (!toggled || !requireOwnerAccess()) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const cursor = cm.getCursor();
+    cm.operation(() => {
+      cm.replaceRange(
+        toggled.checked ? "x" : " ",
+        { line, ch: toggled.stateCh },
+        { line, ch: toggled.stateCh + 1 },
+        "+task-toggle"
+      );
+      cm.setCursor(cursor);
+    });
+    cm.focus();
+  }, true);
 }
 
 function handleSmartPaste(event) {

@@ -782,6 +782,19 @@ function removeTargetBlockPrefix(content, command) {
   return content;
 }
 
+function toggleMarkdownTask(line) {
+  const value = String(line || "");
+  const match = /^((?:[ \t]*>[ \t]*)*[ \t]*(?:[-+*]|\d+[.)])[ \t]+\[)([ xX])(\])/.exec(value);
+  if (!match) return null;
+  const checked = !/[xX]/.test(match[2]);
+  const stateCh = match[1].length;
+  return {
+    line: `${value.slice(0, stateCh)}${checked ? "x" : " "}${value.slice(stateCh + 1)}`,
+    checked,
+    stateCh
+  };
+}
+
 function markdownBlockTemplate(command, selected = "") {
   const selection = String(selected || "");
   if (command === "mermaid") {
@@ -836,6 +849,7 @@ window.TomfngNoteTools = {
   normalizeTags,
   parseMarkdownSlashContext,
   stripMarkdownBlockPrefix,
+  toggleMarkdownTask,
   transformMarkdownBlockLines
 };
 }());

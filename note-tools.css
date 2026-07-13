@@ -1830,6 +1830,26 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   padding-left: 1.4em !important;
 }
 
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-2 {
+  padding-left: 2.8em !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-3 {
+  padding-left: 4.2em !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-4 {
+  padding-left: 5.6em !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-5,
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-6,
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-7,
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-8,
+.editor-field .cm-s-hypermd-light pre.HyperMD-list-line-9 {
+  padding-left: 7em !important;
+}
+
 .editor-field .cm-s-hypermd-light pre.HyperMD-list-line span.cm-formatting-list,
 .editor-field .cm-s-hypermd-light pre.HyperMD-list-line span.cm-hmd-list-indent {
   float: left;
@@ -1859,6 +1879,79 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 
 .editor-field .cm-s-hypermd-light span.cm-formatting-task {
   color: var(--note-muted);
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line:has(.cm-formatting-task) span.cm-formatting-list-ul::after {
+  display: none;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line:has(.cm-formatting-task) span.cm-formatting-list {
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line span.cm-formatting-list + span.cm-formatting-task {
+  position: relative;
+  display: inline-grid !important;
+  box-sizing: border-box;
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  margin: -2px 8px 0 0;
+  border: 1.5px solid #b8b6af;
+  border-radius: 4px;
+  place-items: center;
+  color: transparent !important;
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: 0 1px 2px rgba(47, 45, 41, 0.04);
+  font-size: 0 !important;
+  line-height: 1 !important;
+  opacity: 1 !important;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line span.cm-formatting-list + span.cm-formatting-task::before {
+  position: absolute;
+  inset: -7px;
+  content: "";
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line span.cm-formatting-list + span.cm-formatting-task:hover {
+  border-color: #77746d;
+  box-shadow: 0 0 0 3px rgba(55, 53, 47, 0.06);
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line span.cm-formatting-list + span.cm-formatting-task:active {
+  transform: scale(0.9);
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line span.cm-formatting-list + span.cm-formatting-task.cm-property {
+  border-color: #4d765f;
+  background: #4d765f !important;
+  box-shadow: 0 1px 3px rgba(40, 95, 70, 0.2);
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line span.cm-formatting-list + span.cm-formatting-task.cm-property::after {
+  width: 5px;
+  height: 9px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  content: "";
+  transform: translateY(-1px) rotate(45deg);
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line span.cm-formatting-task + span.cm-formatting-task {
+  display: none !important;
+}
+
+.editor-field .cm-s-hypermd-light:not(.note-source-mode) pre.HyperMD-list-line:has(span.cm-formatting-task.cm-property) > span > span:not(.cm-formatting):not(.cm-hmd-list-indent) {
+  color: #99968f;
+  text-decoration: line-through;
+  text-decoration-color: rgba(107, 104, 97, 0.48);
+  text-decoration-thickness: 1px;
 }
 
 .editor-field .cm-s-hypermd-light .CodeMirror-selected,
@@ -1914,6 +2007,24 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   font-size: 0.78em !important;
   letter-spacing: 0 !important;
   opacity: 1 !important;
+}
+
+.editor-field .note-source-mode.cm-s-hypermd-light pre.CodeMirror-line span.cm-formatting-task {
+  display: inline !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  margin: 0 !important;
+  border: 0 !important;
+  color: #96938c !important;
+  background: none !important;
+  box-shadow: none !important;
+  font-family: var(--note-mono) !important;
+  font-size: 0.78em !important;
+  line-height: inherit !important;
+  opacity: 1 !important;
+  vertical-align: baseline;
+  cursor: text;
 }
 
 .editor-field .note-source-mode.cm-s-hypermd-light pre.HyperMD-header,
