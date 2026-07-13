@@ -7,7 +7,7 @@ require("../source/note-utils.js");
 const TurndownService = require("turndown");
 const turndownPluginGfm = require("turndown-plugin-gfm");
 
-const { createHtmlToMarkdown, markdownToHtml, mergeRemotePosts, normalizeNote } = window.TomfngNoteTools;
+const { createHtmlToMarkdown, extractMarkdownHeadings, markdownToHtml, mergeRemotePosts, normalizeNote } = window.TomfngNoteTools;
 
 function post(overrides = {}) {
   return normalizeNote({
@@ -117,4 +117,25 @@ test("rich clipboard conversion drops unsafe links and images", () => {
   assert.match(markdown, /危险链接/);
   assert.doesNotMatch(markdown, /javascript:|data:image/);
   assert.match(markdown, /!\[安全图片\]\(\/images\/safe\.png\)/);
+});
+
+test("document outline extracts rendered headings and ignores code fences", () => {
+  const headings = extractMarkdownHeadings([
+    "# **开始**",
+    "",
+    "章节二",
+    "-----",
+    "",
+    "```md",
+    "# 代码里的标题",
+    "```",
+    "",
+    "### [结论](https://example.com) #"
+  ].join("\n"));
+
+  assert.deepEqual(headings, [
+    { line: 0, level: 1, text: "开始" },
+    { line: 2, level: 2, text: "章节二" },
+    { line: 9, level: 3, text: "结论" }
+  ]);
 });

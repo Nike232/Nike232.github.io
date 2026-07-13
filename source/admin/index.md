@@ -25,16 +25,23 @@ comments: false
 <section class="admin-layout" data-admin-workspace hidden>
 <aside class="admin-sidebar" aria-label="笔记列表">
 <div class="rail-head">
-<h2>页面</h2>
+<h2 id="sidebar-view-title">页面</h2>
+<div class="sidebar-head-actions">
+<div class="sidebar-view-tabs" role="tablist" aria-label="侧栏视图">
+<button type="button" id="sidebar-pages" role="tab" aria-selected="true" aria-controls="admin-list" title="页面" aria-label="页面"><i class="fa-regular fa-file-lines"></i></button>
+<button type="button" id="sidebar-outline" role="tab" aria-selected="false" aria-controls="admin-outline" title="大纲" aria-label="大纲"><i class="fa-solid fa-list-ul"></i></button>
+</div>
 <span class="count-pill" id="admin-count">0</span>
 </div>
-<div class="admin-actions">
+</div>
+<div class="admin-actions" id="admin-page-actions">
 <button class="solid-button" id="new-note" type="button"><i class="fa-solid fa-plus"></i><span>新页面</span></button>
 <button class="ghost-button" id="duplicate-note" type="button"><i class="fa-regular fa-copy"></i><span>复制</span></button>
 <button class="danger-button" id="delete-note" type="button"><i class="fa-regular fa-trash-can"></i><span>删除</span></button>
 </div>
 <div class="category-strip" id="admin-category-strip" aria-label="分类"></div>
 <div class="admin-list" id="admin-list" aria-live="polite"></div>
+<div class="admin-outline" id="admin-outline" aria-live="polite" hidden></div>
 </aside>
 <section class="editor-panel" aria-label="编辑器">
 <div class="status-line">
@@ -86,6 +93,8 @@ comments: false
 <span>正文</span>
 <div class="editor-controls">
 <button class="ghost-button editor-toggle" id="toggle-vim" type="button" aria-pressed="false"><i class="fa-regular fa-keyboard"></i><span>Vim</span></button>
+<button class="ghost-button editor-icon-button" id="toggle-source" type="button" aria-pressed="false" title="Markdown 源码" aria-label="切换 Markdown 源码"><i class="fa-solid fa-code"></i></button>
+<button class="ghost-button editor-icon-button" id="editor-search" type="button" title="查找" aria-label="查找正文"><i class="fa-solid fa-magnifying-glass"></i></button>
 <button class="ghost-button editor-icon-button" id="toggle-focus" type="button" aria-pressed="false" title="沉浸写作" aria-label="切换沉浸写作"><i class="fa-solid fa-expand"></i></button>
 <span class="editor-stat" id="editor-mode">Markdown</span>
 <span class="editor-stat" id="editor-position">Ln 1, Col 1</span>

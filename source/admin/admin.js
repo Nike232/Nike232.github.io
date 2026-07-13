@@ -7,6 +7,7 @@ root.dataset.ready = "true";
 const {
   createHtmlToMarkdown,
   escapeHtml,
+  extractMarkdownHeadings,
   formatDate,
   makeId,
   makeSlug,
@@ -43,8 +44,10 @@ const state = {
   authUser: null,
   busy: false,
   category: "all",
+  sidebarMode: "pages",
   editor: null,
   editorMode: localStorage.getItem(EDITOR_MODE_KEY) === "vim" ? "vim" : "default",
+  sourceMode: false,
   vimCursorMode: "normal",
   vimBlockCursor: null,
   typingPulse: null,
@@ -80,9 +83,14 @@ const elements = {
   authClear: root.querySelector("#auth-clear"),
   authMessage: root.querySelector("#auth-message"),
   count: root.querySelector("#admin-count"),
+  sidebarTitle: root.querySelector("#sidebar-view-title"),
+  sidebarPages: root.querySelector("#sidebar-pages"),
+  sidebarOutline: root.querySelector("#sidebar-outline"),
+  pageActions: root.querySelector("#admin-page-actions"),
   categoryStrip: root.querySelector("#admin-category-strip"),
   categoryOptions: root.querySelector("#category-options"),
   list: root.querySelector("#admin-list"),
+  outline: root.querySelector("#admin-outline"),
   form: root.querySelector("#editor-form"),
   status: root.querySelector("#status-text"),
   dirty: root.querySelector("#dirty-state"),
@@ -100,6 +108,8 @@ const elements = {
   saveConfig: root.querySelector("#save-config"),
   logoutAdmin: root.querySelector("#logout-admin"),
   toggleVim: root.querySelector("#toggle-vim"),
+  toggleSource: root.querySelector("#toggle-source"),
+  editorSearch: root.querySelector("#editor-search"),
   toggleFocus: root.querySelector("#toggle-focus"),
   selectionToolbar: root.querySelector("#editor-selection-toolbar"),
   editorMode: root.querySelector("#editor-mode"),
@@ -152,7 +162,11 @@ function bindWorkspaceEvents() {
   elements.saveConfig.addEventListener("click", saveConfig);
   elements.logoutAdmin.addEventListener("click", logoutAdmin);
   elements.toggleVim.addEventListener("click", toggleEditorMode);
+  elements.toggleSource.addEventListener("click", () => toggleSourceMode());
+  elements.editorSearch.addEventListener("click", openEditorSearch);
   elements.toggleFocus.addEventListener("click", () => toggleFocusWriting());
+  elements.sidebarPages.addEventListener("click", () => setSidebarMode("pages"));
+  elements.sidebarOutline.addEventListener("click", () => setSidebarMode("outline"));
   elements.selectionToolbar.addEventListener("mousedown", (event) => event.preventDefault());
   elements.selectionToolbar.querySelectorAll("[data-editor-command]").forEach((button) => {
     button.addEventListener("click", () => applyMarkdownCommand(button.dataset.editorCommand));
@@ -286,6 +300,19 @@ function initMarkdownEditor() {
     cursorBlinkRate: 600,
     viewportMargin: 40,
     placeholder: fields.content.getAttribute("placeholder") || "",
+    phrases: {
+      "Search:": "查找：",
+      "(Use /re/ syntax for regexp search)": "支持 /正则表达式/",
+      "With:": "替换为：",
+      "Replace?": "替换当前匹配？",
+      Yes: "替换",
+      No: "跳过",
+      All: "全部替换",
+      Stop: "结束",
+      "Replace all:": "全部查找：",
+      "Replace:": "查找替换：",
+      "Replace with:": "替换为："
+    },
     foldGutter: false,
     gutters: [],
     hmdFoldMath: false,
@@ -322,6 +349,12 @@ function initMarkdownEditor() {
       "Ctrl-2": markdownShortcut("heading-2"),
       "Ctrl-3": markdownShortcut("heading-3"),
       "Ctrl-0": markdownShortcut("paragraph"),
+      "Ctrl-/": sourceModeShortcut(true),
+      "Cmd-/": sourceModeShortcut(false),
+      "Ctrl-F": searchShortcut("findPersistent", true),
+      "Cmd-F": searchShortcut("findPersistent", false),
+      "Ctrl-H": searchShortcut("replace", true),
+      "Cmd-Alt-F": searchShortcut("replace", false),
       F9: () => toggleFocusWriting()
     }
   };
@@ -344,6 +377,7 @@ function initMarkdownEditor() {
     syncEditorCursorStyle();
     scheduleSelectionToolbar();
     scheduleTypewriterCenter();
+    updateOutlineActiveState();
   });
   state.editor.on("focus", () => {
     setEditorFocusState(true);
@@ -1278,6 +1312,8 @@ function scheduleSecondaryRender(noteId) {
     state.secondaryRenderTimer = null;
     renderCategories();
     renderList();
+    renderOutline();
+    renderSidebarMode();
     const note = state.data.notes.find((item) => item.id === noteId);
     if (note && note.id === state.selectedId) renderPreview(note);
   }, 120);
@@ -1287,6 +1323,8 @@ function render() {
   renderCategories();
   renderList();
   renderEditor();
+  renderOutline();
+  renderSidebarMode();
   renderDirtyState();
   updateEditorStats();
 }
@@ -1364,6 +1402,73 @@ function renderList() {
   });
 }
 
+function setSidebarMode(mode) {
+  state.sidebarMode = mode === "outline" ? "outline" : "pages";
+  renderOutline();
+  renderSidebarMode();
+}
+
+function renderSidebarMode() {
+  const outlineMode = state.sidebarMode === "outline";
+  elements.sidebarTitle.textContent = outlineMode ? "大纲" : "页面";
+  elements.pageActions.hidden = outlineMode;
+  elements.categoryStrip.hidden = outlineMode;
+  elements.list.hidden = outlineMode;
+  elements.outline.hidden = !outlineMode;
+  elements.sidebarPages.classList.toggle("is-active", !outlineMode);
+  elements.sidebarOutline.classList.toggle("is-active", outlineMode);
+  elements.sidebarPages.setAttribute("aria-selected", outlineMode ? "false" : "true");
+  elements.sidebarOutline.setAttribute("aria-selected", outlineMode ? "true" : "false");
+  const note = getSelectedNote();
+  const count = outlineMode ? extractMarkdownHeadings(note?.content || "").length : getVisibleNotes().length;
+  elements.count.textContent = `${count}`;
+}
+
+function renderOutline() {
+  const note = getSelectedNote();
+  const headings = extractMarkdownHeadings(note?.content || "");
+  if (!headings.length) {
+    elements.outline.innerHTML = `
+      <div class="empty-state outline-empty">
+        <h2>暂无大纲</h2>
+      </div>
+    `;
+    return;
+  }
+
+  elements.outline.innerHTML = headings.map((heading) => `
+    <button class="outline-row outline-level-${heading.level}" type="button" data-line="${heading.line}" title="${escapeHtml(heading.text)}">
+      <span>${escapeHtml(heading.text)}</span>
+    </button>
+  `).join("");
+  elements.outline.querySelectorAll(".outline-row").forEach((button) => {
+    button.addEventListener("click", () => jumpToOutlineLine(Number(button.dataset.line)));
+  });
+  updateOutlineActiveState();
+}
+
+function jumpToOutlineLine(line) {
+  if (!state.editor || !Number.isInteger(line)) return;
+  const value = state.editor.getLine(line) || "";
+  const marker = /^ {0,3}#{1,6}\s+/.exec(value);
+  const position = { line, ch: marker?.[0].length || 0 };
+  state.editor.setCursor(position);
+  state.editor.scrollIntoView(position, 120);
+  state.editor.focus();
+  updateOutlineActiveState();
+}
+
+function updateOutlineActiveState() {
+  if (state.sidebarMode !== "outline" || !state.editor) return;
+  const cursorLine = state.editor.getCursor().line;
+  let active = null;
+  elements.outline.querySelectorAll(".outline-row").forEach((button) => {
+    button.classList.remove("is-active");
+    if (Number(button.dataset.line) <= cursorLine) active = button;
+  });
+  active?.classList.add("is-active");
+}
+
 function renderEditor() {
   const note = getSelectedNote();
   const disabled = !note || state.busy;
@@ -1374,9 +1479,12 @@ function renderEditor() {
   elements.duplicateNote.disabled = disabled;
   elements.deleteNote.disabled = disabled;
   elements.toggleFocus.disabled = disabled;
+  elements.toggleSource.disabled = disabled;
+  elements.editorSearch.disabled = disabled;
 
   if (!note) {
     if (state.focusWriting) toggleFocusWriting(false);
+    if (state.sourceMode) toggleSourceMode(false);
     fields.title.value = "";
     autoSizeTitleField();
     fields.slug.value = "";
@@ -1466,15 +1574,67 @@ function toggleEditorMode() {
   updateEditorStats();
 }
 
+function toggleSourceMode(force) {
+  if (!requireOwnerAccess()) return;
+  state.sourceMode = typeof force === "boolean" ? force : !state.sourceMode;
+  const cm = state.editor;
+  if (cm) {
+    const wrapper = cm.getWrapperElement?.();
+    wrapper?.classList.toggle("note-source-mode", state.sourceMode);
+    if (cm.getMode?.().name === "hypermd") {
+      cm.operation(() => {
+        cm.setOption("hmdHideToken", !state.sourceMode);
+        cm.setOption("hmdFold", !state.sourceMode);
+        cm.setOption("hmdTableAlign", !state.sourceMode);
+      });
+    }
+    cm.refresh();
+    cm.focus();
+  }
+  updateEditorStats();
+}
+
+function sourceModeShortcut(respectVimNormal) {
+  return (cm) => {
+    const vim = state.editorMode === "vim" ? cm.state?.vim : null;
+    if (respectVimNormal && vim && !vim.insertMode && !vim.visualMode) return window.CodeMirror.Pass;
+    toggleSourceMode();
+    return undefined;
+  };
+}
+
+function openEditorSearch() {
+  if (!requireOwnerAccess() || !state.editor) return;
+  const command = window.CodeMirror?.commands?.findPersistent ? "findPersistent" : "find";
+  if (!window.CodeMirror?.commands?.[command]) {
+    setStatus("查找功能未加载", true);
+    return;
+  }
+  state.editor.execCommand(command);
+  state.editor.focus();
+}
+
+function searchShortcut(command, respectVimNormal) {
+  return (cm) => {
+    const vim = state.editorMode === "vim" ? cm.state?.vim : null;
+    if (respectVimNormal && vim && !vim.insertMode && !vim.visualMode) return window.CodeMirror.Pass;
+    const resolved = window.CodeMirror?.commands?.[command] ? command : "find";
+    cm.execCommand(resolved);
+    return undefined;
+  };
+}
+
 function updateEditorStats() {
   const value = getEditorValue();
   const cursor = state.editor ? state.editor.getCursor() : textareaCursor(fields.content);
   const charCount = value.replace(/\s/g, "").length;
-  elements.editorMode.textContent = state.editorMode === "vim" ? "Vim" : "所见";
+  elements.editorMode.textContent = state.sourceMode ? "源码" : (state.editorMode === "vim" ? "Vim" : "所见");
   elements.editorPosition.textContent = `Ln ${cursor.line + 1}, Col ${cursor.ch + 1}`;
   elements.editorWords.textContent = `${charCount} 字`;
   elements.toggleVim.classList.toggle("is-active", state.editorMode === "vim");
   elements.toggleVim.setAttribute("aria-pressed", state.editorMode === "vim" ? "true" : "false");
+  elements.toggleSource.classList.toggle("is-active", state.sourceMode);
+  elements.toggleSource.setAttribute("aria-pressed", state.sourceMode ? "true" : "false");
 }
 
 function textareaCursor(textarea) {
@@ -1597,6 +1757,8 @@ function setBusy(value) {
     elements.saveConfig,
     elements.logoutAdmin,
     elements.toggleVim,
+    elements.toggleSource,
+    elements.editorSearch,
     elements.toggleFocus
   ].forEach((button) => {
     button.disabled = value;
@@ -1605,6 +1767,8 @@ function setBusy(value) {
   elements.duplicateNote.disabled = value || !note;
   elements.deleteNote.disabled = value || !note;
   elements.toggleFocus.disabled = value || !note;
+  elements.toggleSource.disabled = value || !note;
+  elements.editorSearch.disabled = value || !note;
   Object.values(fields).forEach((field) => {
     field.disabled = value || !note;
   });

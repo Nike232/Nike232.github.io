@@ -323,9 +323,50 @@ function htmlTableToMarkdown(table) {
   return `\n\n${renderRow(cells[0])}\n${renderRow(Array(width).fill("---"))}${cells.slice(1).map((row) => `\n${renderRow(row)}`).join("")}\n\n`;
 }
 
+function extractMarkdownHeadings(markdown = "") {
+  const lines = String(markdown).replace(/\r\n/g, "\n").split("\n");
+  const headings = [];
+  let fence = "";
+
+  for (let line = 0; line < lines.length; line += 1) {
+    const value = lines[line];
+    const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(value);
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0];
+      if (!fence) fence = marker;
+      else if (fence === marker) fence = "";
+      continue;
+    }
+    if (fence) continue;
+
+    const atx = /^ {0,3}(#{1,6})\s+(.+?)\s*#*\s*$/.exec(value);
+    if (atx) {
+      headings.push({ line, level: atx[1].length, text: cleanHeadingText(atx[2]) });
+      continue;
+    }
+
+    const underline = line + 1 < lines.length ? /^ {0,3}(=+|-+)\s*$/.exec(lines[line + 1]) : null;
+    if (underline && value.trim() && !/^\s*[>|]/.test(value)) {
+      headings.push({ line, level: underline[1][0] === "=" ? 1 : 2, text: cleanHeadingText(value) });
+      line += 1;
+    }
+  }
+  return headings.filter((heading) => heading.text);
+}
+
+function cleanHeadingText(value) {
+  return String(value || "")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_~`]+/g, "")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+}
+
 window.TomfngNoteTools = {
   createHtmlToMarkdown,
   escapeHtml,
+  extractMarkdownHeadings,
   formatDate,
   makeId,
   makeSlug,
