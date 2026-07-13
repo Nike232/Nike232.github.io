@@ -137,6 +137,17 @@ comments: false
 <button type="button" data-editor-command="math" title="行内公式" aria-label="行内公式"><i class="fa-solid fa-square-root-variable"></i></button>
 <button type="button" data-editor-command="link" title="链接" aria-label="链接"><i class="fa-solid fa-link"></i></button>
 </div>
+<div class="editor-table-toolbar" id="editor-table-toolbar" role="toolbar" aria-label="表格操作" hidden>
+<button type="button" data-table-action="add-row" title="在下方插入行" aria-label="在下方插入行"><span class="table-action-symbol"><i class="fa-solid fa-table-rows"></i><i class="fa-solid fa-plus"></i></span></button>
+<button type="button" data-table-action="delete-row" title="删除当前行" aria-label="删除当前行"><span class="table-action-symbol"><i class="fa-solid fa-table-rows"></i><i class="fa-solid fa-minus"></i></span></button>
+<span aria-hidden="true"></span>
+<button type="button" data-table-action="add-column" title="在右侧插入列" aria-label="在右侧插入列"><span class="table-action-symbol"><i class="fa-solid fa-table-columns"></i><i class="fa-solid fa-plus"></i></span></button>
+<button type="button" data-table-action="delete-column" title="删除当前列" aria-label="删除当前列"><span class="table-action-symbol"><i class="fa-solid fa-table-columns"></i><i class="fa-solid fa-minus"></i></span></button>
+<span aria-hidden="true"></span>
+<button type="button" data-table-action="align" data-table-value="left" aria-pressed="false" title="左对齐" aria-label="左对齐"><i class="fa-solid fa-align-left"></i></button>
+<button type="button" data-table-action="align" data-table-value="center" aria-pressed="false" title="居中对齐" aria-label="居中对齐"><i class="fa-solid fa-align-center"></i></button>
+<button type="button" data-table-action="align" data-table-value="right" aria-pressed="false" title="右对齐" aria-label="右对齐"><i class="fa-solid fa-align-right"></i></button>
+</div>
 <textarea class="editor-textarea" id="field-content" name="content" spellcheck="false" placeholder="开始写..."></textarea>
 <small class="field-error"></small>
 </div>

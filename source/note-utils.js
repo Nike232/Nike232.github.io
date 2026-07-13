@@ -401,6 +401,222 @@ function htmlTableToMarkdown(table) {
   return `\n\n${renderRow(cells[0])}\n${renderRow(Array(width).fill("---"))}${cells.slice(1).map((row) => `\n${renderRow(row)}`).join("")}\n\n`;
 }
 
+function markdownTableCells(line) {
+  const value = String(line || "");
+  let from = 0;
+  let to = value.length;
+  while (from < to && /\s/.test(value[from])) from += 1;
+  while (to > from && /\s/.test(value[to - 1])) to -= 1;
+
+  let hasBoundaryPipe = false;
+  if (value[from] === "|") {
+    hasBoundaryPipe = true;
+    from += 1;
+  }
+  if (to > from && value[to - 1] === "|" && !isEscapedMarkdownCharacter(value, to - 1)) {
+    hasBoundaryPipe = true;
+    to -= 1;
+  }
+
+  const cells = [];
+  let cellFrom = from;
+  let delimiters = 0;
+  let codeTicks = 0;
+  for (let index = from; index < to; index += 1) {
+    const char = value[index];
+    if (char === "`" && !isEscapedMarkdownCharacter(value, index)) {
+      let run = 1;
+      while (value[index + run] === "`") run += 1;
+      if (!codeTicks) codeTicks = run;
+      else if (codeTicks === run) codeTicks = 0;
+      index += run - 1;
+      continue;
+    }
+    if (char !== "|" || codeTicks || isEscapedMarkdownCharacter(value, index)) continue;
+    cells.push(markdownTableCell(value, cellFrom, index));
+    cellFrom = index + 1;
+    delimiters += 1;
+  }
+  cells.push(markdownTableCell(value, cellFrom, to));
+
+  return {
+    cells,
+    isRow: hasBoundaryPipe || delimiters > 0
+  };
+}
+
+function markdownTableCell(line, from, to) {
+  const raw = line.slice(from, to);
+  const leading = /^\s*/.exec(raw)?.[0].length || 0;
+  const trailing = /\s*$/.exec(raw)?.[0].length || 0;
+  return {
+    text: raw.trim(),
+    from,
+    to,
+    contentFrom: Math.min(to, from + leading),
+    contentTo: Math.max(from, to - trailing)
+  };
+}
+
+function isEscapedMarkdownCharacter(value, index) {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && value[cursor] === "\\"; cursor -= 1) backslashes += 1;
+  return backslashes % 2 === 1;
+}
+
+function markdownTableAlignment(cell) {
+  const marker = String(cell?.text || "").replace(/\s+/g, "");
+  const match = /^(:)?-{3,}(:)?$/.exec(marker);
+  if (!match) return null;
+  if (match[1] && match[2]) return "center";
+  if (match[2]) return "right";
+  if (match[1]) return "left";
+  return "none";
+}
+
+function findMarkdownTable(lines, cursor = {}) {
+  const values = Array.from(lines || [], (line) => String(line || ""));
+  const cursorLine = Math.max(0, Math.min(values.length - 1, Math.floor(Number(cursor.line) || 0)));
+  if (!values.length || !markdownTableCells(values[cursorLine]).isRow) return null;
+
+  let blockFrom = cursorLine;
+  let blockTo = cursorLine;
+  while (blockFrom > 0 && markdownTableCells(values[blockFrom - 1]).isRow) blockFrom -= 1;
+  while (blockTo + 1 < values.length && markdownTableCells(values[blockTo + 1]).isRow) blockTo += 1;
+
+  let separatorLine = -1;
+  let separator = null;
+  for (let line = Math.max(blockFrom + 1, 1); line <= blockTo; line += 1) {
+    const parsed = markdownTableCells(values[line]);
+    if (parsed.cells.length && parsed.cells.every((cell) => markdownTableAlignment(cell) !== null)) {
+      separatorLine = line;
+      separator = parsed;
+      break;
+    }
+  }
+  if (!separator) return null;
+
+  const fromLine = separatorLine - 1;
+  let toLine = separatorLine;
+  while (toLine + 1 < values.length && markdownTableCells(values[toLine + 1]).isRow) toLine += 1;
+  if (cursorLine < fromLine || cursorLine > toLine) return null;
+
+  const parsedRows = [markdownTableCells(values[fromLine])];
+  for (let line = separatorLine + 1; line <= toLine; line += 1) {
+    parsedRows.push(markdownTableCells(values[line]));
+  }
+  const columnCount = Math.max(separator.cells.length, ...parsedRows.map((row) => row.cells.length));
+  if (!columnCount) return null;
+  const cursorCells = markdownTableCells(values[cursorLine]).cells;
+  const cursorCh = Math.max(0, Math.floor(Number(cursor.ch) || 0));
+  let column = cursorCells.findIndex((cell) => cursorCh <= cell.to);
+  if (column < 0) column = cursorCells.length - 1;
+  column = Math.max(0, Math.min(columnCount - 1, column));
+
+  const alignments = Array.from({ length: columnCount }, (_item, index) => (
+    markdownTableAlignment(separator.cells[index]) || "none"
+  ));
+  return {
+    values,
+    fromLine,
+    toLine,
+    separatorLine,
+    parsedRows,
+    alignments,
+    columnCount,
+    column,
+    rowType: cursorLine === fromLine ? "header" : cursorLine === separatorLine ? "separator" : "body",
+    cursorLine
+  };
+}
+
+function getMarkdownTableContext(lines, cursor = {}) {
+  const table = findMarkdownTable(lines, cursor);
+  if (!table) return null;
+  return {
+    fromLine: table.fromLine,
+    toLine: table.toLine,
+    separatorLine: table.separatorLine,
+    rowType: table.rowType,
+    rowCount: Math.max(0, table.parsedRows.length - 1),
+    columnCount: table.columnCount,
+    column: table.column,
+    alignment: table.alignments[table.column]
+  };
+}
+
+function editMarkdownTable(lines, cursor, action, value = "") {
+  const table = findMarkdownTable(lines, cursor);
+  if (!table) return null;
+
+  const rows = table.parsedRows.map((row) => (
+    Array.from({ length: table.columnCount }, (_item, index) => row.cells[index]?.text || "")
+  ));
+  const alignments = [...table.alignments];
+  let targetRowType = table.rowType;
+  let targetBodyIndex = table.rowType === "body" ? table.cursorLine - table.separatorLine - 1 : -1;
+  let targetColumn = table.column;
+
+  if (action === "add-row") {
+    const insertAt = targetBodyIndex < 0 ? 1 : targetBodyIndex + 2;
+    rows.splice(insertAt, 0, Array(table.columnCount).fill(""));
+    targetRowType = "body";
+    targetBodyIndex = insertAt - 1;
+  } else if (action === "delete-row") {
+    if (targetBodyIndex < 0) return null;
+    rows.splice(targetBodyIndex + 1, 1);
+    if (rows.length > 1) {
+      targetBodyIndex = Math.min(targetBodyIndex, rows.length - 2);
+      targetRowType = "body";
+    } else {
+      targetBodyIndex = -1;
+      targetRowType = "header";
+    }
+  } else if (action === "add-column") {
+    targetColumn = Math.min(table.columnCount, table.column + 1);
+    rows.forEach((row) => row.splice(targetColumn, 0, ""));
+    alignments.splice(targetColumn, 0, "none");
+  } else if (action === "delete-column") {
+    if (table.columnCount <= 1) return null;
+    rows.forEach((row) => row.splice(table.column, 1));
+    alignments.splice(table.column, 1);
+    targetColumn = Math.min(table.column, alignments.length - 1);
+  } else if (action === "align") {
+    if (!new Set(["none", "left", "center", "right"]).has(value)) return null;
+    alignments[table.column] = value;
+  } else {
+    return null;
+  }
+
+  const renderRow = (row) => `| ${row.join(" | ")} |`;
+  const renderAlignment = (alignment) => {
+    if (alignment === "left") return ":---";
+    if (alignment === "center") return ":---:";
+    if (alignment === "right") return "---:";
+    return "---";
+  };
+  const rendered = [
+    renderRow(rows[0]),
+    renderRow(alignments.map(renderAlignment)),
+    ...rows.slice(1).map(renderRow)
+  ];
+  const relativeLine = targetRowType === "header"
+    ? 0
+    : targetRowType === "separator"
+      ? 1
+      : targetBodyIndex + 2;
+  const targetCells = markdownTableCells(rendered[relativeLine]).cells;
+  const targetCell = targetCells[Math.max(0, Math.min(targetColumn, targetCells.length - 1))];
+  const ch = targetCell.text ? targetCell.contentFrom : Math.min(targetCell.to, targetCell.from + 1);
+
+  return {
+    fromLine: table.fromLine,
+    toLine: table.toLine,
+    lines: rendered,
+    cursor: { line: table.fromLine + relativeLine, ch }
+  };
+}
+
 function extractMarkdownHeadings(markdown = "") {
   const lines = String(markdown).replace(/\r\n/g, "\n").split("\n");
   const headings = [];
@@ -605,10 +821,12 @@ window.TomfngNoteTools = {
   extractMarkdownHeadings,
   filterNotesByQuery,
   formatDate,
+  getMarkdownTableContext,
   makeId,
   makeSlug,
   markdownToHtml,
   markdownBlockTemplate,
+  editMarkdownTable,
   mergeRemotePosts,
   noteContentFingerprint,
   normalizeCategory,

@@ -14,8 +14,10 @@ const turndownPluginGfm = require("turndown-plugin-gfm");
 
 const {
   createHtmlToMarkdown,
+  editMarkdownTable,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  getMarkdownTableContext,
   markdownBlockTemplate,
   markdownToHtml,
   mergeRemotePosts,
@@ -296,6 +298,63 @@ test("block insertion templates preserve the intended cursor selection", () => {
     mermaid.body.slice(mermaid.selectionStart, mermaid.selectionEnd),
     "graph TD\n  A[开始] --> B[完成]"
   );
+});
+
+test("table editing identifies cells and preserves escaped or inline-code pipes", () => {
+  const lines = [
+    "| 名称 | 值 |",
+    "| :--- | ---: |",
+    "| `a|b` | x\\|y |"
+  ];
+  const context = getMarkdownTableContext(lines, { line: 2, ch: 12 });
+
+  assert.deepEqual(context, {
+    fromLine: 0,
+    toLine: 2,
+    separatorLine: 1,
+    rowType: "body",
+    rowCount: 1,
+    columnCount: 2,
+    column: 1,
+    alignment: "right"
+  });
+
+  const added = editMarkdownTable(lines, { line: 2, ch: 12 }, "add-row");
+  assert.deepEqual(added.lines, [
+    "| 名称 | 值 |",
+    "| :--- | ---: |",
+    "| `a|b` | x\\|y |",
+    "|  |  |"
+  ]);
+  assert.deepEqual(added.cursor, { line: 3, ch: 5 });
+});
+
+test("table editing adds and removes columns, rows, and alignment", () => {
+  const lines = [
+    "前文",
+    "| 名称 | 值 |",
+    "| :--- | ---: |",
+    "| A | 1 |",
+    "后文"
+  ];
+  const addedColumn = editMarkdownTable(lines, { line: 1, ch: 3 }, "add-column");
+  assert.deepEqual(addedColumn.lines, [
+    "| 名称 |  | 值 |",
+    "| :--- | --- | ---: |",
+    "| A |  | 1 |"
+  ]);
+  assert.deepEqual(addedColumn.cursor, { line: 1, ch: 7 });
+
+  const centered = editMarkdownTable(lines, { line: 3, ch: 8 }, "align", "center");
+  assert.equal(centered.lines[1], "| :--- | :---: |");
+
+  const deletedRow = editMarkdownTable(lines, { line: 3, ch: 3 }, "delete-row");
+  assert.deepEqual(deletedRow.lines, ["| 名称 | 值 |", "| :--- | ---: |"]);
+  assert.deepEqual(deletedRow.cursor, { line: 1, ch: 2 });
+
+  const deletedColumn = editMarkdownTable(lines, { line: 3, ch: 8 }, "delete-column");
+  assert.deepEqual(deletedColumn.lines, ["| 名称 |", "| :--- |", "| A |"]);
+  assert.equal(editMarkdownTable(deletedColumn.lines, { line: 2, ch: 3 }, "delete-column"), null);
 });
 
 test("editor view state keeps safe bounded document positions", () => {
