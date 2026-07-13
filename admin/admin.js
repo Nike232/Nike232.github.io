@@ -8,6 +8,7 @@ const {
   createHtmlToMarkdown,
   escapeHtml,
   extractMarkdownHeadings,
+  filterNotesByQuery,
   formatDate,
   makeId,
   makeSlug,
@@ -65,6 +66,7 @@ const state = {
   authUser: null,
   busy: false,
   category: initialEditorView.category,
+  noteQuery: "",
   sidebarMode: initialEditorView.sidebarMode,
   editor: null,
   editorNoteId: null,
@@ -118,6 +120,8 @@ const elements = {
   sidebarPages: root.querySelector("#sidebar-pages"),
   sidebarOutline: root.querySelector("#sidebar-outline"),
   pageActions: root.querySelector("#admin-page-actions"),
+  noteSearchWrap: root.querySelector("#admin-note-search-wrap"),
+  noteSearch: root.querySelector("#admin-note-search"),
   categoryStrip: root.querySelector("#admin-category-strip"),
   categoryOptions: root.querySelector("#category-options"),
   list: root.querySelector("#admin-list"),
@@ -221,6 +225,13 @@ function bindWorkspaceEvents() {
     elements.imagePicker.value = "";
     if (files.length) insertImageUploads(files);
   });
+  elements.noteSearch.addEventListener("input", () => {
+    state.noteQuery = elements.noteSearch.value;
+    renderList();
+    renderSidebarMode();
+  });
+  elements.noteSearch.addEventListener("keydown", handleNoteSearchKeydown);
+  elements.list.addEventListener("keydown", handleNoteListKeydown);
   elements.sidebarPages.addEventListener("click", () => setSidebarMode("pages"));
   elements.sidebarOutline.addEventListener("click", () => setSidebarMode("outline"));
   elements.selectionToolbar.addEventListener("mousedown", (event) => event.preventDefault());
@@ -232,6 +243,13 @@ function bindWorkspaceEvents() {
   elements.form.addEventListener("submit", (event) => event.preventDefault());
   document.addEventListener("keydown", (event) => {
     if (event.defaultPrevented) return;
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "p") {
+      const vim = state.editorMode === "vim" && state.editor?.hasFocus?.() ? state.editor.state?.vim : null;
+      if (vim && !vim.insertMode && !vim.visualMode) return;
+      event.preventDefault();
+      openPageSearch();
+      return;
+    }
     if (event.key !== "Escape") return;
     if (state.slashMenuOpen) {
       closeSlashMenu();
@@ -434,6 +452,8 @@ function initMarkdownEditor() {
       "Cmd-F": searchShortcut("findPersistent", false),
       "Ctrl-H": searchShortcut("replace", true),
       "Cmd-Alt-F": searchShortcut("replace", false),
+      "Ctrl-P": pageSearchShortcut(true),
+      "Cmd-P": pageSearchShortcut(false),
       "Ctrl-Shift-7": blockShortcut("ordered-list", true),
       "Cmd-Shift-7": blockShortcut("ordered-list", false),
       "Ctrl-Shift-8": blockShortcut("bullet-list", true),
@@ -1728,8 +1748,10 @@ function getCategories() {
 }
 
 function getVisibleNotes() {
-  if (state.category === "all") return state.data.notes;
-  return state.data.notes.filter((note) => normalizeCategory(note.category) === state.category);
+  const categorized = state.category === "all"
+    ? state.data.notes
+    : state.data.notes.filter((note) => normalizeCategory(note.category) === state.category);
+  return filterNotesByQuery(categorized, state.noteQuery);
 }
 
 function renderCategories() {
@@ -1764,10 +1786,11 @@ function renderList() {
   const visibleNotes = getVisibleNotes();
   elements.count.textContent = `${visibleNotes.length}`;
   if (!visibleNotes.length) {
+    const searching = Boolean(state.noteQuery.trim());
     elements.list.innerHTML = `
       <div class="empty-state">
-        <h2>${state.data.notes.length ? "这个分类是空的" : "没有页面"}</h2>
-        <p>${state.data.notes.length ? "新建页面会自动放进当前分类。" : "点击新建，开始写第一条笔记。"}</p>
+        <h2>${searching ? "没有匹配页面" : state.data.notes.length ? "这个分类是空的" : "没有页面"}</h2>
+        <p>${searching ? "换个关键词继续查找。" : state.data.notes.length ? "新建页面会自动放进当前分类。" : "点击新建，开始写第一条笔记。"}</p>
       </div>
     `;
     return;
@@ -1790,9 +1813,10 @@ function renderList() {
   }).join("");
 
   elements.list.querySelectorAll(".note-row").forEach((row) => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (event) => {
       state.selectedId = row.dataset.id;
       render();
+      if (event.detail === 0) state.editor?.focus?.();
     });
   });
 }
@@ -1808,6 +1832,7 @@ function renderSidebarMode() {
   const outlineMode = state.sidebarMode === "outline";
   elements.sidebarTitle.textContent = outlineMode ? "大纲" : "页面";
   elements.pageActions.hidden = outlineMode;
+  elements.noteSearchWrap.hidden = outlineMode;
   elements.categoryStrip.hidden = outlineMode;
   elements.list.hidden = outlineMode;
   elements.outline.hidden = !outlineMode;
@@ -2142,6 +2167,88 @@ function sourceModeShortcut(respectVimNormal) {
   };
 }
 
+function openPageSearch() {
+  if (!requireOwnerAccess() || state.busy) return;
+  if (state.slashMenuOpen) closeSlashMenu();
+  if (state.blockMenuOpen) toggleBlockMenu(false);
+  if (state.sidebarMode !== "pages") setSidebarMode("pages");
+  elements.noteSearch.focus();
+  elements.noteSearch.select();
+}
+
+function pageSearchShortcut(respectVimNormal) {
+  return (cm) => {
+    const vim = state.editorMode === "vim" ? cm.state?.vim : null;
+    if (respectVimNormal && vim && !vim.insertMode && !vim.visualMode) return window.CodeMirror.Pass;
+    openPageSearch();
+    return undefined;
+  };
+}
+
+function handleNoteSearchKeydown(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.noteQuery) {
+      state.noteQuery = "";
+      elements.noteSearch.value = "";
+      renderList();
+      renderSidebarMode();
+    } else {
+      state.editor?.focus?.();
+    }
+    return;
+  }
+  if (event.key === "ArrowDown") {
+    const first = elements.list.querySelector(".note-row");
+    if (!first) return;
+    event.preventDefault();
+    first.focus();
+    return;
+  }
+  if (event.key !== "Enter") return;
+  const first = getVisibleNotes()[0];
+  if (!first) return;
+  event.preventDefault();
+  state.selectedId = first.id;
+  persistEditorView();
+  render();
+  state.editor?.focus?.();
+}
+
+function handleNoteListKeydown(event) {
+  const current = event.target.closest?.(".note-row");
+  if (!current) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    state.selectedId = current.dataset.id;
+    persistEditorView();
+    render();
+    state.editor?.focus?.();
+    return;
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    elements.noteSearch.focus();
+    return;
+  }
+  if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+  const rows = [...elements.list.querySelectorAll(".note-row:not(:disabled)")];
+  const index = rows.indexOf(current);
+  if (index < 0) return;
+  event.preventDefault();
+  if (event.key === "ArrowUp" && index === 0) {
+    elements.noteSearch.focus();
+    return;
+  }
+  const nextIndex = event.key === "Home"
+    ? 0
+    : event.key === "End"
+      ? rows.length - 1
+      : Math.min(rows.length - 1, Math.max(0, index + (event.key === "ArrowDown" ? 1 : -1)));
+  rows[nextIndex]?.focus();
+}
+
 function openEditorSearch() {
   if (!requireOwnerAccess() || !state.editor) return;
   if (state.slashMenuOpen) closeSlashMenu();
@@ -2289,6 +2396,7 @@ function setStatus(message, isError = false, linkUrl = "") {
 function setBusy(value) {
   state.busy = value;
   if (value && state.slashMenuOpen) closeSlashMenu();
+  elements.noteSearch.disabled = value;
   [
     elements.newNote,
     elements.duplicateNote,
