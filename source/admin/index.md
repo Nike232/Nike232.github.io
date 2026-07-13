@@ -49,7 +49,7 @@ comments: false
 <div class="field-grid">
 <label class="field">
 <span>标题</span>
-<input id="field-title" name="title" autocomplete="off" placeholder="无标题">
+<textarea id="field-title" name="title" rows="1" autocomplete="off" placeholder="无标题"></textarea>
 <small class="field-error" id="error-title"></small>
 </label>
 <label class="field" hidden>
@@ -86,10 +86,19 @@ comments: false
 <span>正文</span>
 <div class="editor-controls">
 <button class="ghost-button editor-toggle" id="toggle-vim" type="button" aria-pressed="false"><i class="fa-regular fa-keyboard"></i><span>Vim</span></button>
+<button class="ghost-button editor-icon-button" id="toggle-focus" type="button" aria-pressed="false" title="沉浸写作" aria-label="切换沉浸写作"><i class="fa-solid fa-expand"></i></button>
 <span class="editor-stat" id="editor-mode">Markdown</span>
 <span class="editor-stat" id="editor-position">Ln 1, Col 1</span>
 <span class="editor-stat" id="editor-words">0 字</span>
 </div>
+</div>
+<div class="editor-selection-toolbar" id="editor-selection-toolbar" role="toolbar" aria-label="文本格式" hidden>
+<button type="button" data-editor-command="bold" title="加粗" aria-label="加粗"><strong>B</strong></button>
+<button type="button" data-editor-command="italic" title="斜体" aria-label="斜体"><em>I</em></button>
+<button type="button" data-editor-command="strike" title="删除线" aria-label="删除线"><s>S</s></button>
+<span aria-hidden="true"></span>
+<button type="button" data-editor-command="code" title="行内代码" aria-label="行内代码"><i class="fa-solid fa-code"></i></button>
+<button type="button" data-editor-command="link" title="链接" aria-label="链接"><i class="fa-solid fa-link"></i></button>
 </div>
 <textarea class="editor-textarea" id="field-content" name="content" spellcheck="false" placeholder="开始写..."></textarea>
 <small class="field-error"></small>

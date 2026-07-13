@@ -5,6 +5,7 @@ if (!root || root.dataset.ready === "true" || !tools) return;
 root.dataset.ready = "true";
 
 const {
+  createHtmlToMarkdown,
   escapeHtml,
   formatDate,
   makeId,
@@ -52,6 +53,10 @@ const state = {
   secondaryRenderTimer: null,
   imageUploads: new Map(),
   imageUploadQueue: Promise.resolve(),
+  richPasteConverter: null,
+  selectionToolbarFrame: null,
+  typewriterFrame: null,
+  focusWriting: false,
   autosaveStatus: "saved",
   syncingEditor: false,
   publishPollId: 0
@@ -95,6 +100,8 @@ const elements = {
   saveConfig: root.querySelector("#save-config"),
   logoutAdmin: root.querySelector("#logout-admin"),
   toggleVim: root.querySelector("#toggle-vim"),
+  toggleFocus: root.querySelector("#toggle-focus"),
+  selectionToolbar: root.querySelector("#editor-selection-toolbar"),
   editorMode: root.querySelector("#editor-mode"),
   editorPosition: root.querySelector("#editor-position"),
   editorWords: root.querySelector("#editor-words"),
@@ -145,8 +152,18 @@ function bindWorkspaceEvents() {
   elements.saveConfig.addEventListener("click", saveConfig);
   elements.logoutAdmin.addEventListener("click", logoutAdmin);
   elements.toggleVim.addEventListener("click", toggleEditorMode);
+  elements.toggleFocus.addEventListener("click", () => toggleFocusWriting());
+  elements.selectionToolbar.addEventListener("mousedown", (event) => event.preventDefault());
+  elements.selectionToolbar.querySelectorAll("[data-editor-command]").forEach((button) => {
+    button.addEventListener("click", () => applyMarkdownCommand(button.dataset.editorCommand));
+  });
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
+  fields.title.addEventListener("input", autoSizeTitleField);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.focusWriting) toggleFocusWriting(false);
+  });
+  window.addEventListener("resize", autoSizeTitleField);
   window.addEventListener("beforeunload", flushAutosave);
 }
 
@@ -293,7 +310,19 @@ function initMarkdownEditor() {
       "Cmd-S"(cm) {
         cm.save();
         saveWorkspace();
-      }
+      },
+      "Ctrl-B": markdownShortcut("bold"),
+      "Cmd-B": markdownShortcut("bold", false),
+      "Ctrl-I": markdownShortcut("italic"),
+      "Cmd-I": markdownShortcut("italic", false),
+      "Ctrl-K": markdownShortcut("link"),
+      "Cmd-K": markdownShortcut("link", false),
+      "Alt-Shift-5": markdownShortcut("strike", false),
+      "Ctrl-1": markdownShortcut("heading-1"),
+      "Ctrl-2": markdownShortcut("heading-2"),
+      "Ctrl-3": markdownShortcut("heading-3"),
+      "Ctrl-0": markdownShortcut("paragraph"),
+      F9: () => toggleFocusWriting()
     }
   };
 
@@ -313,14 +342,25 @@ function initMarkdownEditor() {
   state.editor.on("cursorActivity", () => {
     updateEditorStats();
     syncEditorCursorStyle();
+    scheduleSelectionToolbar();
+    scheduleTypewriterCenter();
   });
-  state.editor.on("focus", () => setEditorFocusState(true));
-  state.editor.on("blur", () => setEditorFocusState(false));
+  state.editor.on("focus", () => {
+    setEditorFocusState(true);
+    scheduleSelectionToolbar();
+  });
+  state.editor.on("blur", () => {
+    setEditorFocusState(false);
+    hideSelectionToolbar();
+  });
   state.editor.on("vim-mode-change", (_cm, event) => {
     state.vimCursorMode = event?.mode || "normal";
     syncEditorCursorStyle();
   });
-  state.editor.on("scroll", syncEditorCursorStyle);
+  state.editor.on("scroll", () => {
+    syncEditorCursorStyle();
+    hideSelectionToolbar();
+  });
   syncEditorCursorStyle();
   setEditorFocusState(state.editor.hasFocus?.());
   updateEditorStats();
@@ -332,9 +372,12 @@ function bindEditorImageTransfers() {
 
   state.editor.on("paste", (_cm, event) => {
     const files = imageFilesFromTransfer(event.clipboardData || window.clipboardData);
-    if (!files.length) return;
-    event.preventDefault();
-    insertImageUploads(files);
+    if (files.length) {
+      event.preventDefault();
+      insertImageUploads(files);
+      return;
+    }
+    handleSmartPaste(event);
   });
 
   state.editor.on("dragover", (_cm, event) => {
@@ -355,6 +398,217 @@ function bindEditorImageTransfers() {
     cm.setCursor(cm.coordsChar({ left: event.clientX, top: event.clientY }, "window"));
     insertImageUploads(files);
   });
+}
+
+function handleSmartPaste(event) {
+  if (!state.editor) return false;
+  const clipboard = event.clipboardData || window.clipboardData;
+  if (!clipboard) return false;
+  const text = String(clipboard.getData("text/plain") || "").trim();
+  const selection = state.editor.getSelection();
+  const url = normalizePastedLink(text);
+
+  if (url && selection && !selection.includes("\n")) {
+    event.preventDefault();
+    const label = selection.replace(/([\\\]])/g, "\\$1");
+    state.editor.replaceSelection(`[${label}](${url})`, "end", "+smart-paste");
+    return true;
+  }
+
+  const html = String(clipboard.getData("text/html") || "");
+  if (!html || !/<(?:h[1-6]|p|div|br|ul|ol|li|blockquote|pre|code|strong|b|em|i|del|s|a|img|table)\b/i.test(html)) {
+    return false;
+  }
+  const convert = getRichPasteConverter();
+  const markdown = convert ? convert(html) : "";
+  if (!markdown) return false;
+  event.preventDefault();
+  state.editor.replaceSelection(markdown, "around", "+rich-paste");
+  return true;
+}
+
+function getRichPasteConverter() {
+  if (state.richPasteConverter === false) return null;
+  if (typeof state.richPasteConverter === "function") return state.richPasteConverter;
+  const converter = createHtmlToMarkdown?.(window.TurndownService, window.turndownPluginGfm);
+  state.richPasteConverter = converter || false;
+  return converter;
+}
+
+function normalizePastedLink(value) {
+  const url = String(value || "").trim().replace(/\s/g, "%20").replace(/\)/g, "%29");
+  if (/^https?:\/\/[^\s]+$/i.test(url) || /^mailto:[^\s]+$/i.test(url) || /^\/(?!\/)[^\s]+$/.test(url)) return url;
+  return "";
+}
+
+function applyMarkdownCommand(command, cm = state.editor) {
+  if (!cm || !requireOwnerAccess()) return;
+  const marks = {
+    bold: ["**", "**"],
+    italic: ["*", "*"],
+    strike: ["~~", "~~"],
+    code: ["`", "`"]
+  };
+
+  cm.operation(() => {
+    if (command.startsWith("heading-") || command === "paragraph") {
+      applyHeadingCommand(cm, command === "paragraph" ? 0 : Number(command.slice(-1)));
+    } else if (command === "link") {
+      applyLinkCommand(cm);
+    } else if (marks[command]) {
+      applyInlineMarks(cm, marks[command][0], marks[command][1], command === "code");
+    }
+  });
+  cm.focus();
+  scheduleSelectionToolbar();
+}
+
+function markdownShortcut(command, respectVimNormal = true) {
+  return (cm) => {
+    const vim = state.editorMode === "vim" ? cm.state?.vim : null;
+    if (respectVimNormal && vim && !vim.insertMode && !vim.visualMode) return window.CodeMirror.Pass;
+    applyMarkdownCommand(command, cm);
+    return undefined;
+  };
+}
+
+function applyInlineMarks(cm, open, close, codeStyle) {
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const selected = cm.getRange(from, to);
+  if (codeStyle && selected.includes("\n")) {
+    const block = `\n\n\`\`\`\n${selected}\n\`\`\`\n\n`;
+    cm.replaceRange(block, from, to, "+format");
+    return;
+  }
+  if (!selected) {
+    cm.replaceRange(`${open}${close}`, from, to, "+format");
+    cm.setCursor({ line: from.line, ch: from.ch + open.length });
+    return;
+  }
+
+  const line = cm.getLine(from.line);
+  const sameLine = from.line === to.line;
+  const outsideOpen = sameLine && from.ch >= open.length && line.slice(from.ch - open.length, from.ch) === open;
+  const outsideClose = sameLine && line.slice(to.ch, to.ch + close.length) === close;
+  if (outsideOpen && outsideClose) {
+    const rangeFrom = { line: from.line, ch: from.ch - open.length };
+    const rangeTo = { line: to.line, ch: to.ch + close.length };
+    cm.replaceRange(selected, rangeFrom, rangeTo, "+format");
+    cm.setSelection(rangeFrom, { line: rangeFrom.line, ch: rangeFrom.ch + selected.length });
+    return;
+  }
+  if (selected.startsWith(open) && selected.endsWith(close) && selected.length >= open.length + close.length) {
+    const inner = selected.slice(open.length, selected.length - close.length);
+    cm.replaceRange(inner, from, to, "+format");
+    cm.setSelection(from, { line: from.line, ch: from.ch + inner.length });
+    return;
+  }
+  cm.replaceRange(`${open}${selected}${close}`, from, to, "+format");
+  cm.setSelection(
+    { line: from.line, ch: from.ch + open.length },
+    { line: to.line, ch: to.ch + (from.line === to.line ? open.length : 0) }
+  );
+}
+
+function applyLinkCommand(cm) {
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const selected = cm.getRange(from, to);
+  if (selected.includes("\n")) {
+    setStatus("链接文字需要在同一行", true);
+    return;
+  }
+  const label = selected || "链接";
+  const markdown = `[${label.replace(/([\\\]])/g, "\\$1")}](https://)`;
+  cm.replaceRange(markdown, from, to, "+format");
+  if (selected) {
+    const urlStart = from.ch + markdown.length - "https://)".length;
+    cm.setSelection(
+      { line: from.line, ch: urlStart },
+      { line: from.line, ch: urlStart + "https://".length }
+    );
+  } else {
+    cm.setSelection(
+      { line: from.line, ch: from.ch + 1 },
+      { line: from.line, ch: from.ch + 1 + label.length }
+    );
+  }
+}
+
+function applyHeadingCommand(cm, level) {
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const lastLine = to.ch === 0 && to.line > from.line ? to.line - 1 : to.line;
+  for (let lineNumber = lastLine; lineNumber >= from.line; lineNumber -= 1) {
+    const line = cm.getLine(lineNumber);
+    const content = line.replace(/^ {0,3}#{1,6}\s+/, "");
+    const next = `${level ? `${"#".repeat(level)} ` : ""}${content}`;
+    cm.replaceRange(next, { line: lineNumber, ch: 0 }, { line: lineNumber, ch: line.length }, "+format");
+  }
+}
+
+function scheduleSelectionToolbar() {
+  window.cancelAnimationFrame(state.selectionToolbarFrame);
+  state.selectionToolbarFrame = window.requestAnimationFrame(syncSelectionToolbar);
+}
+
+function syncSelectionToolbar() {
+  state.selectionToolbarFrame = null;
+  const cm = state.editor;
+  if (!cm?.hasFocus?.() || cm.somethingSelected?.() !== true) {
+    hideSelectionToolbar();
+    return;
+  }
+  const selections = cm.listSelections();
+  if (selections.length !== 1) {
+    hideSelectionToolbar();
+    return;
+  }
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  const start = cm.charCoords(from, "window");
+  const end = cm.charCoords(to, "window");
+  const toolbar = elements.selectionToolbar;
+  toolbar.hidden = false;
+  const width = toolbar.offsetWidth || 196;
+  const height = toolbar.offsetHeight || 38;
+  const center = (Math.min(start.left, end.left) + Math.max(start.right, end.right)) / 2;
+  const x = Math.max(8, Math.min(window.innerWidth - width - 8, center - width / 2));
+  const y = Math.max(8, Math.min(start.top, end.top) - height - 10);
+  toolbar.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(y)}px, 0)`;
+}
+
+function hideSelectionToolbar() {
+  elements.selectionToolbar.hidden = true;
+}
+
+function toggleFocusWriting(force) {
+  state.focusWriting = typeof force === "boolean" ? force : !state.focusWriting;
+  root.classList.toggle("is-focus-writing", state.focusWriting);
+  elements.toggleFocus.classList.toggle("is-active", state.focusWriting);
+  elements.toggleFocus.setAttribute("aria-pressed", state.focusWriting ? "true" : "false");
+  elements.toggleFocus.querySelector("i").className = state.focusWriting ? "fa-solid fa-compress" : "fa-solid fa-expand";
+  state.editor?.refresh?.();
+  state.editor?.focus?.();
+  scheduleTypewriterCenter(true);
+}
+
+function scheduleTypewriterCenter(force = false) {
+  if (!state.focusWriting || !state.editor) return;
+  window.cancelAnimationFrame(state.typewriterFrame);
+  state.typewriterFrame = window.requestAnimationFrame(() => centerActiveLine(force));
+}
+
+function centerActiveLine(force) {
+  state.typewriterFrame = null;
+  if (!state.focusWriting || !state.editor?.hasFocus?.()) return;
+  const cursor = state.editor.charCoords(state.editor.getCursor(), "window");
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+  const upper = viewportHeight * 0.3;
+  const lower = viewportHeight * 0.58;
+  if (!force && cursor.top >= upper && cursor.bottom <= lower) return;
+  window.scrollBy(0, cursor.top - viewportHeight * 0.43);
 }
 
 function bindFallbackImageTransfers() {
@@ -1119,9 +1373,12 @@ function renderEditor() {
   fields.status.disabled = true;
   elements.duplicateNote.disabled = disabled;
   elements.deleteNote.disabled = disabled;
+  elements.toggleFocus.disabled = disabled;
 
   if (!note) {
+    if (state.focusWriting) toggleFocusWriting(false);
     fields.title.value = "";
+    autoSizeTitleField();
     fields.slug.value = "";
     fields.category.value = "";
     fields.tags.value = "";
@@ -1141,6 +1398,7 @@ function renderEditor() {
   }
 
   fields.title.value = note.title;
+  autoSizeTitleField();
   fields.slug.value = syncDraftSlug(note);
   fields.category.value = normalizeCategory(note.category);
   fields.tags.value = note.tags.join(", ");
@@ -1150,6 +1408,12 @@ function renderEditor() {
   setEditorEnabled(!state.busy);
   renderPreview(note);
   validateSelected();
+}
+
+function autoSizeTitleField() {
+  if (!fields.title) return;
+  fields.title.style.height = "auto";
+  fields.title.style.height = `${Math.max(fields.title.scrollHeight, 40)}px`;
 }
 
 function renderPreview(note) {
@@ -1332,13 +1596,15 @@ function setBusy(value) {
     elements.saveLocal,
     elements.saveConfig,
     elements.logoutAdmin,
-    elements.toggleVim
+    elements.toggleVim,
+    elements.toggleFocus
   ].forEach((button) => {
     button.disabled = value;
   });
   const note = getSelectedNote();
   elements.duplicateNote.disabled = value || !note;
   elements.deleteNote.disabled = value || !note;
+  elements.toggleFocus.disabled = value || !note;
   Object.values(fields).forEach((field) => {
     field.disabled = value || !note;
   });

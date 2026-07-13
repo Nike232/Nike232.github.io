@@ -4,7 +4,10 @@ const assert = require("node:assert/strict");
 global.window = {};
 require("../source/note-utils.js");
 
-const { markdownToHtml, mergeRemotePosts, normalizeNote } = window.TomfngNoteTools;
+const TurndownService = require("turndown");
+const turndownPluginGfm = require("turndown-plugin-gfm");
+
+const { createHtmlToMarkdown, markdownToHtml, mergeRemotePosts, normalizeNote } = window.TomfngNoteTools;
 
 function post(overrides = {}) {
   return normalizeNote({
@@ -83,4 +86,35 @@ test("Markdown preview does not turn unsafe image URLs into elements", () => {
 
   assert.doesNotMatch(html, /<img/);
   assert.doesNotMatch(html, /tomfng-image-upload/);
+});
+
+test("rich clipboard HTML becomes clean GFM Markdown", () => {
+  const convert = createHtmlToMarkdown(TurndownService, turndownPluginGfm);
+  const markdown = convert(`
+    <h2>实验记录</h2>
+    <p><strong>结论</strong>和<del>旧结论</del>，参考<a href="https://example.com/a b">文档</a>。</p>
+    <ul><li><input type="checkbox" checked>完成实验</li></ul>
+    <table><tbody><tr><td>指标</td><td>值</td></tr><tr><td>准确率</td><td>98%</td></tr></tbody></table>
+  `);
+
+  assert.match(markdown, /^## 实验记录/m);
+  assert.match(markdown, /\*\*结论\*\*/);
+  assert.match(markdown, /~~旧结论~~/);
+  assert.match(markdown, /\[文档\]\(https:\/\/example\.com\/a%20b\)/);
+  assert.match(markdown, /\[x\] 完成实验/);
+  assert.match(markdown, /\| 指标 \| 值 \|/);
+  assert.match(markdown, /\| 准确率 \| 98% \|/);
+});
+
+test("rich clipboard conversion drops unsafe links and images", () => {
+  const convert = createHtmlToMarkdown(TurndownService, turndownPluginGfm);
+  const markdown = convert(`
+    <p><a href="javascript:alert(1)">危险链接</a></p>
+    <img src="data:image/png;base64,AAAA" alt="内联图片">
+    <img src="/images/safe.png" alt="安全图片">
+  `);
+
+  assert.match(markdown, /危险链接/);
+  assert.doesNotMatch(markdown, /javascript:|data:image/);
+  assert.match(markdown, /!\[安全图片\]\(\/images\/safe\.png\)/);
 });
