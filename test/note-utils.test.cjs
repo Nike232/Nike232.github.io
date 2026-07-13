@@ -18,12 +18,15 @@ const {
   editMarkdownTable,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  findMarkdownLinkAt,
+  formatMarkdownLink,
   getMarkdownTableContext,
   markdownBlockTemplate,
   markdownFootnoteTemplate,
   markdownToHtml,
   mergeRemotePosts,
   normalizeEditorViewState,
+  normalizeMarkdownLinkUrl,
   normalizeNote,
   parseMarkdownSlashContext,
   toggleMarkdownTask,
@@ -336,6 +339,30 @@ test("block insertion templates preserve the intended cursor selection", () => {
     selectionStart: 6,
     selectionEnd: 10
   });
+});
+
+test("inline links can be found, normalized, and rewritten in place", () => {
+  const line = '访问 [OpenAI](https://openai.com/docs_(v2) "官方") 与 ![图片](/image.png)';
+  const link = findMarkdownLinkAt(line, line.indexOf("OpenAI") + 2);
+
+  assert.deepEqual(link, {
+    from: line.indexOf("[OpenAI]"),
+    to: line.indexOf(" 与"),
+    label: "OpenAI",
+    url: "https://openai.com/docs_(v2)",
+    titleSuffix: ' "官方"'
+  });
+  assert.equal(findMarkdownLinkAt(line, line.indexOf("图片") + 1), null);
+  assert.equal(findMarkdownLinkAt('[\\[规范\\]](./guide.md)', 4).label, "[规范]");
+
+  assert.equal(normalizeMarkdownLinkUrl("https://example.com/a (b)"), "https://example.com/a%20%28b%29");
+  assert.equal(normalizeMarkdownLinkUrl("../guide.md#intro"), "../guide.md#intro");
+  assert.equal(normalizeMarkdownLinkUrl("javascript:alert(1)"), "");
+  assert.equal(normalizeMarkdownLinkUrl("//evil.example"), "");
+  assert.equal(
+    formatMarkdownLink("A [B]", "https://example.com/a_(b)", ' "说明"'),
+    '[A \\[B\\]](https://example.com/a_%28b%29 "说明")'
+  );
 });
 
 test("table editing identifies cells and preserves escaped or inline-code pipes", () => {

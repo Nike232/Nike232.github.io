@@ -10,6 +10,8 @@ const {
   escapeHtml,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  findMarkdownLinkAt,
+  formatMarkdownLink,
   formatDate,
   getMarkdownTableContext,
   makeId,
@@ -21,6 +23,7 @@ const {
   noteContentFingerprint,
   normalizeCategory,
   normalizeEditorViewState,
+  normalizeMarkdownLinkUrl,
   normalizeNote,
   normalizeNotesData,
   normalizeTags,
@@ -112,6 +115,8 @@ const state = {
   imageUploadQueue: Promise.resolve(),
   richPasteConverter: null,
   selectionToolbarFrame: null,
+  linkPopoverOpen: false,
+  linkContext: null,
   tableToolbarFrame: null,
   tableContext: null,
   typewriterFrame: null,
@@ -177,6 +182,10 @@ const elements = {
   editorSearch: root.querySelector("#editor-search"),
   toggleFocus: root.querySelector("#toggle-focus"),
   selectionToolbar: root.querySelector("#editor-selection-toolbar"),
+  linkPopover: root.querySelector("#editor-link-popover"),
+  linkLabel: root.querySelector("#editor-link-label"),
+  linkUrl: root.querySelector("#editor-link-url"),
+  linkError: root.querySelector("#editor-link-error"),
   tableToolbar: root.querySelector("#editor-table-toolbar"),
   blockToggle: root.querySelector("#editor-block-toggle"),
   blockMenu: root.querySelector("#editor-block-menu"),
@@ -269,6 +278,14 @@ function bindWorkspaceEvents() {
   elements.selectionToolbar.querySelectorAll("[data-editor-command]").forEach((button) => {
     button.addEventListener("click", () => applyMarkdownCommand(button.dataset.editorCommand));
   });
+  elements.linkPopover.addEventListener("pointerdown", (event) => event.stopPropagation());
+  elements.linkPopover.querySelectorAll("[data-link-action]").forEach((button) => {
+    button.addEventListener("click", () => handleLinkPopoverAction(button.dataset.linkAction));
+  });
+  [elements.linkLabel, elements.linkUrl].forEach((input) => {
+    input.addEventListener("input", clearLinkPopoverError);
+    input.addEventListener("keydown", handleLinkPopoverKeydown);
+  });
   elements.tableToolbar.addEventListener("mousedown", (event) => event.preventDefault());
   elements.tableToolbar.querySelectorAll("[data-table-action]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -297,6 +314,10 @@ function bindWorkspaceEvents() {
       return;
     }
     if (event.key !== "Escape") return;
+    if (state.linkPopoverOpen) {
+      closeLinkPopover({ restoreFocus: true });
+      return;
+    }
     if (state.slashMenuOpen) {
       closeSlashMenu();
       return;
@@ -308,18 +329,21 @@ function bindWorkspaceEvents() {
     if (state.focusWriting) toggleFocusWriting(false);
   });
   document.addEventListener("pointerdown", (event) => {
+    if (state.linkPopoverOpen && !elements.linkPopover.contains(event.target)) closeLinkPopover();
     if (state.slashMenuOpen && !elements.slashMenu.contains(event.target)) closeSlashMenu();
     if (state.blockMenuOpen && !elements.blockMenu.contains(event.target) && !elements.blockToggle.contains(event.target)) {
       toggleBlockMenu(false);
     }
   });
   window.addEventListener("resize", autoSizeTitleField);
+  window.addEventListener("resize", positionLinkPopover);
   window.addEventListener("resize", positionBlockMenu);
   window.addEventListener("resize", positionSlashMenu);
   window.addEventListener("resize", scheduleTableToolbar);
   window.addEventListener("scroll", () => {
     if (state.blockMenuOpen) toggleBlockMenu(false);
     if (state.slashMenuOpen) positionSlashMenu();
+    if (state.linkPopoverOpen) positionLinkPopover();
     scheduleTableToolbar();
     scheduleEditorViewSave();
   }, { passive: true });
@@ -689,6 +713,7 @@ function initMarkdownEditor() {
   state.editor.on("keydown", handleEditorRawShortcut);
   state.editor.on("renderLine", decorateEditorFootnotes);
   bindEditorImageTransfers();
+  bindEditorLinkEditing();
   bindEditorTaskToggles();
 
   state.editor.on("change", (_cm, change) => {
@@ -729,6 +754,7 @@ function initMarkdownEditor() {
     syncEditorCursorStyle();
     hideSelectionToolbar();
     scheduleTableToolbar();
+    if (state.linkPopoverOpen) positionLinkPopover();
     if (state.blockMenuOpen) toggleBlockMenu(false);
     if (state.slashMenuOpen) closeSlashMenu();
     scheduleEditorViewSave();
@@ -802,6 +828,22 @@ function bindEditorTaskToggles() {
   }, true);
 }
 
+function bindEditorLinkEditing() {
+  const cm = state.editor;
+  const wrapper = cm?.getWrapperElement?.();
+  if (!wrapper) return;
+
+  wrapper.addEventListener("click", (event) => {
+    if (state.sourceMode || event.button !== 0) return;
+    const target = event.target.closest?.("span.cm-link, span.cm-url, span.hmd-link-icon");
+    if (!target) return;
+    const position = cm.coordsChar({ left: event.clientX, top: event.clientY }, "window");
+    const parsed = findMarkdownLinkAt(cm.getLine(position.line), position.ch);
+    if (!parsed) return;
+    openLinkPopover(linkContextFromParsed(position.line, parsed), { focus: "url" });
+  });
+}
+
 function decorateEditorFootnotes(_cm, _line, element) {
   element?.querySelectorAll?.("span.cm-hmd-footref:not(.cm-formatting)").forEach((reference) => {
     const label = reference.textContent.replace(/^\^/, "").trim();
@@ -854,6 +896,10 @@ function normalizePastedLink(value) {
 
 function applyMarkdownCommand(command, cm = state.editor) {
   if (!cm || !requireOwnerAccess()) return;
+  if (command === "link") {
+    applyLinkCommand(cm);
+    return;
+  }
   const marks = {
     bold: ["**", "**"],
     italic: ["*", "*"],
@@ -867,8 +913,6 @@ function applyMarkdownCommand(command, cm = state.editor) {
       applyHeadingCommand(cm, Number(command.slice(-1)));
     } else if (command === "paragraph") {
       applyParagraphCommand(cm);
-    } else if (command === "link") {
-      applyLinkCommand(cm);
     } else if (marks[command]) {
       applyInlineMarks(cm, marks[command][0], marks[command][1], command === "code");
     }
@@ -949,21 +993,209 @@ function applyLinkCommand(cm) {
     setStatus("链接文字需要在同一行", true);
     return;
   }
-  const label = selected || "链接";
-  const markdown = `[${label.replace(/([\\\]])/g, "\\$1")}](https://)`;
-  cm.replaceRange(markdown, from, to, "+format");
-  if (selected) {
-    const urlStart = from.ch + markdown.length - "https://)".length;
-    cm.setSelection(
-      { line: from.line, ch: urlStart },
-      { line: from.line, ch: urlStart + "https://".length }
-    );
-  } else {
-    cm.setSelection(
-      { line: from.line, ch: from.ch + 1 },
-      { line: from.line, ch: from.ch + 1 + label.length }
-    );
+
+  const line = cm.getLine(from.line);
+  const parsed = findMarkdownLinkAt(line, from.ch) || findMarkdownLinkAt(line, to.ch);
+  if (parsed) {
+    openLinkPopover(linkContextFromParsed(from.line, parsed), { focus: "url" });
+    return;
   }
+
+  let rangeFrom = from;
+  let rangeTo = to;
+  let label = selected;
+  if (!label) {
+    const word = markdownWordRange(line, from.ch);
+    rangeFrom = { line: from.line, ch: word.from };
+    rangeTo = { line: from.line, ch: word.to };
+    label = line.slice(word.from, word.to);
+  }
+  openLinkPopover({
+    from: rangeFrom,
+    to: rangeTo,
+    label,
+    url: "",
+    titleSuffix: "",
+    isNew: true
+  }, { focus: label ? "url" : "label" });
+}
+
+function markdownWordRange(line, ch) {
+  const value = String(line || "");
+  let from = Math.max(0, Math.min(value.length, Number(ch) || 0));
+  let to = from;
+  const isWord = (char) => Boolean(char && !/[\s`*_{}\[\]()<>]/.test(char));
+  while (from > 0 && isWord(value[from - 1])) from -= 1;
+  while (to < value.length && isWord(value[to])) to += 1;
+  return { from, to };
+}
+
+function linkContextFromParsed(line, parsed) {
+  return {
+    from: { line, ch: parsed.from },
+    to: { line, ch: parsed.to },
+    label: parsed.label,
+    url: parsed.url,
+    titleSuffix: parsed.titleSuffix,
+    isNew: false
+  };
+}
+
+function openLinkPopover(context, { focus = "url" } = {}) {
+  if (!context || !state.editor) return;
+  if (state.blockMenuOpen) toggleBlockMenu(false);
+  if (state.slashMenuOpen) closeSlashMenu();
+  hideSelectionToolbar();
+  hideTableToolbar();
+  clearLinkPopoverError();
+  state.linkContext = context;
+  state.linkPopoverOpen = true;
+  elements.linkLabel.value = context.label || "";
+  elements.linkUrl.value = context.url || "";
+  elements.linkPopover.hidden = false;
+  elements.linkPopover.classList.toggle("is-new", Boolean(context.isNew));
+  elements.linkPopover.querySelector('[data-link-action="remove"]').disabled = Boolean(context.isNew);
+  positionLinkPopover();
+  window.requestAnimationFrame(() => {
+    const input = focus === "label" ? elements.linkLabel : elements.linkUrl;
+    input.focus();
+    input.select();
+  });
+}
+
+function closeLinkPopover({ restoreFocus = false } = {}) {
+  if (!state.linkPopoverOpen) return;
+  const context = state.linkContext;
+  state.linkPopoverOpen = false;
+  state.linkContext = null;
+  elements.linkPopover.hidden = true;
+  clearLinkPopoverError();
+  if (!restoreFocus || !state.editor || !context) return;
+  state.editor.focus();
+  const vim = state.editorMode === "vim" ? state.editor.state?.vim : null;
+  if (vim && !vim.insertMode && !vim.visualMode) state.editor.setCursor(context.from);
+  else state.editor.setSelection(context.from, context.to);
+}
+
+function handleLinkPopoverKeydown(event) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    closeLinkPopover({ restoreFocus: true });
+    return;
+  }
+  if (event.key !== "Enter" || event.isComposing) return;
+  event.preventDefault();
+  applyLinkPopover();
+}
+
+function handleLinkPopoverAction(action) {
+  if (action === "apply") applyLinkPopover();
+  if (action === "remove") removeLinkFromPopover();
+  if (action === "open") openLinkFromPopover();
+}
+
+function applyLinkPopover() {
+  const context = state.linkContext;
+  const cm = state.editor;
+  if (!context || !cm) return;
+  const label = elements.linkLabel.value.trim();
+  const url = normalizeMarkdownLinkUrl(elements.linkUrl.value);
+  if (!label) {
+    showLinkPopoverError("请输入链接文字", elements.linkLabel);
+    return;
+  }
+  if (!url) {
+    showLinkPopoverError("链接地址无效", elements.linkUrl);
+    return;
+  }
+  const markdown = formatMarkdownLink(label, url, context.titleSuffix);
+  if (!markdown || !linkContextStillValid(context)) {
+    closeLinkPopover();
+    setStatus("链接位置已经发生变化，请重试", true);
+    return;
+  }
+
+  closeLinkPopover();
+  cm.operation(() => {
+    cm.replaceRange(markdown, context.from, context.to, "+link-edit");
+    cm.setCursor({ line: context.from.line, ch: context.from.ch + markdown.length });
+  });
+  cm.focus();
+  setStatus(context.isNew ? "已插入链接" : "已更新链接");
+}
+
+function removeLinkFromPopover() {
+  const context = state.linkContext;
+  const cm = state.editor;
+  if (!context || !cm || context.isNew || !linkContextStillValid(context)) return;
+  const label = elements.linkLabel.value.trim() || context.label;
+  closeLinkPopover();
+  cm.operation(() => {
+    cm.replaceRange(label, context.from, context.to, "+link-edit");
+    cm.setCursor({ line: context.from.line, ch: context.from.ch + label.length });
+  });
+  cm.focus();
+  setStatus("已移除链接");
+}
+
+function openLinkFromPopover() {
+  const url = normalizeMarkdownLinkUrl(elements.linkUrl.value);
+  if (!url) {
+    showLinkPopoverError("链接地址无效", elements.linkUrl);
+    return;
+  }
+  let href = url;
+  try {
+    if (!/^(?:https?:|mailto:)/i.test(url)) href = new URL(url, window.location.href).href;
+  } catch {
+    showLinkPopoverError("链接地址无效", elements.linkUrl);
+    return;
+  }
+  window.open(href, "_blank", "noopener,noreferrer");
+}
+
+function linkContextStillValid(context) {
+  const line = state.editor?.getLine(context.from.line);
+  if (typeof line !== "string" || context.from.line !== context.to.line || context.to.ch > line.length) return false;
+  if (context.isNew) return true;
+  const parsed = findMarkdownLinkAt(line, context.from.ch);
+  return Boolean(parsed && parsed.from === context.from.ch && parsed.to === context.to.ch);
+}
+
+function clearLinkPopoverError() {
+  elements.linkError.hidden = true;
+  elements.linkError.textContent = "";
+  [elements.linkLabel, elements.linkUrl].forEach((input) => {
+    input.removeAttribute("aria-invalid");
+  });
+  if (state.linkPopoverOpen) window.requestAnimationFrame(positionLinkPopover);
+}
+
+function showLinkPopoverError(message, input) {
+  clearLinkPopoverError();
+  elements.linkError.textContent = message;
+  elements.linkError.hidden = false;
+  input.setAttribute("aria-invalid", "true");
+  input.focus();
+  window.requestAnimationFrame(positionLinkPopover);
+}
+
+function positionLinkPopover() {
+  if (!state.linkPopoverOpen || !state.editor || !state.linkContext) return;
+  const popover = elements.linkPopover;
+  const start = state.editor.charCoords(state.linkContext.from, "window");
+  const end = state.editor.charCoords(state.linkContext.to, "window");
+  const width = popover.offsetWidth || 392;
+  const height = popover.offsetHeight || 90;
+  const center = (Math.min(start.left, end.left) + Math.max(start.right, end.right)) / 2;
+  const x = Math.max(8, Math.min(window.innerWidth - width - 8, center - width / 2));
+  const navbarBottom = document.querySelector(".navbar-container")?.getBoundingClientRect().bottom || 0;
+  const minY = Math.max(8, navbarBottom + 8);
+  const below = Math.max(start.bottom, end.bottom) + 9;
+  const above = Math.min(start.top, end.top) - height - 9;
+  const y = below + height <= window.innerHeight - 8 ? below : Math.max(minY, above);
+  positionFloatingElement(popover, x, y);
 }
 
 function applyHeadingCommand(cm, level) {
@@ -1027,6 +1259,7 @@ function applyBlockCommand(command, cm = state.editor) {
 
 function toggleBlockMenu(force) {
   const open = typeof force === "boolean" ? force : !state.blockMenuOpen;
+  if (open && state.linkPopoverOpen) closeLinkPopover();
   state.blockMenuOpen = Boolean(open && getSelectedNote() && !state.busy);
   elements.blockMenu.hidden = !state.blockMenuOpen;
   elements.blockToggle.classList.toggle("is-active", state.blockMenuOpen);
@@ -1112,6 +1345,7 @@ function normalizeSlashQuery(value) {
 function openSlashMenu() {
   if (!state.editor || state.slashMenuOpen) return;
   if (state.blockMenuOpen) toggleBlockMenu(false);
+  if (state.linkPopoverOpen) closeLinkPopover();
   state.slashMenuOpen = true;
   elements.slashMenu.hidden = false;
   const input = state.editor.getInputField?.();
@@ -2338,6 +2572,7 @@ function renderEditor() {
   const note = getSelectedNote();
   const switchedDocument = switchEditorDocument(note?.id || null);
   if (switchedDocument && state.slashMenuOpen) closeSlashMenu();
+  if (switchedDocument && state.linkPopoverOpen) closeLinkPopover();
   const contentReloaded = Boolean(note && state.editor && state.editor.getValue() !== note.content);
   if (!switchedDocument && contentReloaded) captureEditorView();
   if (
@@ -2580,12 +2815,16 @@ function flushEditorSession() {
 function setEditorEnabled(enabled) {
   if (!state.editor) return;
   state.editor.setOption("readOnly", enabled ? false : "nocursor");
-  if (!enabled) hideTableToolbar();
+  if (!enabled) {
+    hideTableToolbar();
+    closeLinkPopover();
+  }
 }
 
 function toggleEditorMode() {
   if (!requireOwnerAccess()) return;
   if (state.slashMenuOpen) closeSlashMenu();
+  if (state.linkPopoverOpen) closeLinkPopover();
   state.editorMode = state.editorMode === "vim" ? "default" : "vim";
   if (state.editorMode === "vim" && (!window.CodeMirror || !window.CodeMirror.keyMap.vim)) {
     state.editorMode = "default";
@@ -2605,6 +2844,7 @@ function toggleEditorMode() {
 function toggleSourceMode(force) {
   if (!requireOwnerAccess()) return;
   if (state.slashMenuOpen) closeSlashMenu();
+  if (state.linkPopoverOpen) closeLinkPopover();
   state.sourceMode = typeof force === "boolean" ? force : !state.sourceMode;
   const cm = state.editor;
   if (cm) {
@@ -2636,6 +2876,7 @@ function sourceModeShortcut(respectVimNormal) {
 function openPageSearch() {
   if (!requireOwnerAccess() || state.busy) return;
   if (state.slashMenuOpen) closeSlashMenu();
+  if (state.linkPopoverOpen) closeLinkPopover();
   if (state.blockMenuOpen) toggleBlockMenu(false);
   if (state.sidebarMode !== "pages") setSidebarMode("pages");
   elements.noteSearch.focus();
@@ -2718,6 +2959,7 @@ function handleNoteListKeydown(event) {
 function openEditorSearch() {
   if (!requireOwnerAccess() || !state.editor) return;
   if (state.slashMenuOpen) closeSlashMenu();
+  if (state.linkPopoverOpen) closeLinkPopover();
   const command = window.CodeMirror?.commands?.findPersistent ? "findPersistent" : "find";
   if (!window.CodeMirror?.commands?.[command]) {
     setStatus("查找功能未加载", true);
@@ -2732,6 +2974,7 @@ function searchShortcut(command, respectVimNormal) {
     const vim = state.editorMode === "vim" ? cm.state?.vim : null;
     if (respectVimNormal && vim && !vim.insertMode && !vim.visualMode) return window.CodeMirror.Pass;
     if (state.slashMenuOpen) closeSlashMenu();
+    if (state.linkPopoverOpen) closeLinkPopover();
     const resolved = window.CodeMirror?.commands?.[command] ? command : "find";
     cm.execCommand(resolved);
     return undefined;
