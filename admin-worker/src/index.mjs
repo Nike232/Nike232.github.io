@@ -5,6 +5,13 @@ const STATE_COOKIE = "tomfng_oauth_state";
 const SESSION_TTL = 60 * 60 * 24 * 14;
 const STATE_TTL = 60 * 10;
 const REVISION_MARKER = "tomfng-admin-revision";
+const MAX_ASSET_BYTES = 10 * 1024 * 1024;
+const IMAGE_TYPES = Object.freeze({
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif"
+});
 
 export default {
   async fetch(request, env) {
@@ -25,6 +32,7 @@ export default {
         return await postsData(request, env);
       }
       if (url.pathname === "/api/posts" && request.method === "DELETE") return await deletePost(request, env);
+      if (url.pathname === "/api/assets" && request.method === "POST") return await uploadAsset(request, env);
       if (url.pathname === "/api/publish" && request.method === "POST") return await publish(request, env);
       if (url.pathname === "/api/publish-status" && request.method === "GET") return await publishStatus(request, env);
 
@@ -190,6 +198,33 @@ async function publish(request, env) {
   }, 200, request, env);
 }
 
+async function uploadAsset(request, env) {
+  await requireAdmin(request, env);
+  requireAllowedOrigin(request, env);
+
+  const body = await request.json().catch(() => null);
+  const image = parseImageDataUrl(body?.dataUrl);
+  const path = assetFilePath(body?.name, image.mime, env);
+  const noteId = String(body?.noteId || "").trim().slice(0, 80);
+  const result = await githubPutBase64Content(
+    path,
+    image.base64,
+    `Upload image${noteId ? ` for ${noteId}` : ""}: ${path.split("/").pop()}`,
+    null,
+    env
+  );
+
+  return json({
+    ok: true,
+    path,
+    url: publicAssetUrl(path),
+    mime: image.mime,
+    size: image.size,
+    sha: result.content?.sha || null,
+    commit: result.commit?.sha || null
+  }, 200, request, env);
+}
+
 async function deletePost(request, env) {
   await requireAdmin(request, env);
   requireAllowedOrigin(request, env);
@@ -285,9 +320,13 @@ async function githubGetContent(path, env) {
 }
 
 async function githubPutContent(path, content, message, sha, env) {
+  return githubPutBase64Content(path, encodeBase64(content), message, sha, env);
+}
+
+async function githubPutBase64Content(path, base64Content, message, sha, env) {
   const body = {
     message,
-    content: encodeBase64(content),
+    content: base64Content,
     branch: githubBranch(env)
   };
   if (sha) body.sha = sha;
@@ -529,6 +568,95 @@ function normalizePostSlug(slug, title) {
 
 function normalizePostDirectory(path) {
   return String(path || "source/_posts").trim().replace(/\\/g, "/").replace(/^\/+|\/+$/g, "") || "source/_posts";
+}
+
+function parseImageDataUrl(value) {
+  const match = /^data:([^;,]+);base64,([\s\S]+)$/i.exec(String(value || ""));
+  if (!match) throw new HttpError(400, "图片数据格式无效");
+
+  const mime = match[1].toLowerCase();
+  const extension = IMAGE_TYPES[mime];
+  if (!extension) throw new HttpError(415, "只支持 PNG、JPEG、WebP 和 GIF 图片");
+
+  const base64 = match[2].replace(/\s/g, "");
+  if (!base64 || base64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) {
+    throw new HttpError(400, "图片数据不是有效的 Base64");
+  }
+
+  let binary = "";
+  try {
+    binary = atob(base64);
+  } catch {
+    throw new HttpError(400, "图片数据不是有效的 Base64");
+  }
+  const size = binary.length;
+  if (!size) throw new HttpError(400, "图片内容为空");
+  if (size > MAX_ASSET_BYTES) throw new HttpError(413, "图片不能超过 10 MB");
+  if (!matchesImageSignature(binary, mime)) throw new HttpError(400, "图片内容与文件类型不匹配");
+
+  return { mime, extension, base64, size };
+}
+
+function matchesImageSignature(binary, mime) {
+  const byte = (index) => binary.charCodeAt(index);
+  if (mime === "image/png") {
+    return byte(0) === 0x89 && binary.slice(1, 4) === "PNG" && byte(4) === 0x0d && byte(5) === 0x0a;
+  }
+  if (mime === "image/jpeg") return byte(0) === 0xff && byte(1) === 0xd8 && byte(2) === 0xff;
+  if (mime === "image/webp") return binary.slice(0, 4) === "RIFF" && binary.slice(8, 12) === "WEBP";
+  if (mime === "image/gif") return binary.slice(0, 6) === "GIF87a" || binary.slice(0, 6) === "GIF89a";
+  return false;
+}
+
+function assetFilePath(name, mime, env = {}, options = {}) {
+  const extension = IMAGE_TYPES[String(mime || "").toLowerCase()];
+  if (!extension) throw new HttpError(415, "不支持的图片类型");
+  const directory = normalizeAssetDirectory(env.ASSET_DIR || "source/images/posts");
+  const date = options.date instanceof Date ? options.date : new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: env.TIME_ZONE || "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit"
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  const stem = safeAssetStem(name);
+  const unique = String(options.unique || `${Date.now().toString(36)}-${randomToken().slice(0, 8)}`)
+    .replace(/[^a-zA-Z0-9-]+/g, "")
+    .slice(0, 40) || Date.now().toString(36);
+  return `${directory}/${parts.year}/${parts.month}/${stem}-${unique}.${extension}`;
+}
+
+function normalizeAssetDirectory(path) {
+  const directory = String(path || "source/images/posts")
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "");
+  const segments = directory.split("/");
+  if (segments[0] !== "source" || segments.length < 2 || segments.some((segment) => (
+    !segment || segment === "." || segment === ".." || !/^[A-Za-z0-9._-]+$/.test(segment)
+  ))) {
+    throw new HttpError(500, "ASSET_DIR 配置无效");
+  }
+  return directory;
+}
+
+function safeAssetStem(name) {
+  const filename = String(name || "image").split(/[\\/]/).pop() || "image";
+  const stem = filename.replace(/\.[^.]+$/, "").normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+  return stem || "image";
+}
+
+function publicAssetUrl(path) {
+  const cleanPath = String(path || "").replace(/^\/+/, "");
+  const publicPath = cleanPath.startsWith("source/") ? cleanPath.slice("source/".length) : cleanPath;
+  return `/${publicPath.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 function postBody(note) {
@@ -788,11 +916,14 @@ class HttpError extends Error {
 }
 
 export const __test = {
+  assetFilePath,
   buildHexoPost,
+  parseImageDataUrl,
   parseHexoPost,
   postBody,
   postSlugFromPath,
   publicPostUrl,
+  publicAssetUrl,
   resolvePostTarget,
   safePostPath,
   splitFrontMatter,

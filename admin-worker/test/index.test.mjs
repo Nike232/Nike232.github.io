@@ -5,9 +5,50 @@ import { __test } from "../src/index.mjs";
 
 const env = {
   POST_DIR: "source/_posts",
+  ASSET_DIR: "source/images/posts",
   SITE_URL: "http://tomfng.space",
   TIME_ZONE: "Asia/Shanghai"
 };
+
+test("image data URLs are validated without rewriting their base64 payload", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]);
+  const dataUrl = `data:image/png;base64,${png.toString("base64")}`;
+  const parsed = __test.parseImageDataUrl(dataUrl);
+
+  assert.equal(parsed.mime, "image/png");
+  assert.equal(parsed.extension, "png");
+  assert.equal(parsed.size, png.length);
+  assert.equal(parsed.base64, png.toString("base64"));
+});
+
+test("image uploads reject unsupported, oversized, and mismatched data", () => {
+  assert.throws(
+    () => __test.parseImageDataUrl("data:image/svg+xml;base64,PHN2Zz4="),
+    /只支持 PNG/
+  );
+  assert.throws(
+    () => __test.parseImageDataUrl(`data:image/png;base64,${Buffer.alloc(10 * 1024 * 1024 + 1).toString("base64")}`),
+    /不能超过 10 MB/
+  );
+  assert.throws(
+    () => __test.parseImageDataUrl(`data:image/png;base64,${Buffer.from("not a png").toString("base64")}`),
+    /文件类型不匹配/
+  );
+});
+
+test("image paths stay under the dated public asset directory", () => {
+  const path = __test.assetFilePath("截图 01.PNG", "image/png", env, {
+    date: new Date("2026-07-13T02:00:00.000Z"),
+    unique: "fixed-id"
+  });
+
+  assert.equal(path, "source/images/posts/2026/07/01-fixed-id.png");
+  assert.equal(__test.publicAssetUrl(path), "/images/posts/2026/07/01-fixed-id.png");
+  assert.throws(
+    () => __test.assetFilePath("image.png", "image/png", { ...env, ASSET_DIR: "source/../private" }),
+    /ASSET_DIR 配置无效/
+  );
+});
 
 test("published Markdown round-trips through the Hexo parser", () => {
   const note = {

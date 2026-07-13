@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 global.window = {};
 require("../source/note-utils.js");
 
-const { mergeRemotePosts, normalizeNote } = window.TomfngNoteTools;
+const { markdownToHtml, mergeRemotePosts, normalizeNote } = window.TomfngNoteTools;
 
 function post(overrides = {}) {
   return normalizeNote({
@@ -61,4 +61,26 @@ test("remote synchronization imports posts on a clean browser", () => {
 test("a remotely deleted clean post is removed locally", () => {
   const result = mergeRemotePosts({ notes: [post()] }, { notes: [] });
   assert.equal(result.data.notes.length, 0);
+});
+
+test("Markdown preview renders safe local and remote images", () => {
+  const html = markdownToHtml([
+    "![本地截图](/images/posts/2026/07/demo.png)",
+    "",
+    "![远程图片](https://images.example.com/demo.webp)"
+  ].join("\n"));
+
+  assert.match(html, /<img src="\/images\/posts\/2026\/07\/demo\.png" alt="本地截图"/);
+  assert.match(html, /<img src="https:\/\/images\.example\.com\/demo\.webp" alt="远程图片"/);
+});
+
+test("Markdown preview does not turn unsafe image URLs into elements", () => {
+  const html = markdownToHtml([
+    "![脚本](javascript:alert(1))",
+    "![跨站](//evil.example/image.png)",
+    "<!--tomfng-image-upload:pending-id-->"
+  ].join("\n"));
+
+  assert.doesNotMatch(html, /<img/);
+  assert.doesNotMatch(html, /tomfng-image-upload/);
 });

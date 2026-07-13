@@ -440,7 +440,7 @@ inject:
     - <link rel="stylesheet" href="/vendor/codemirror/addon/dialog/dialog.css">
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-mode.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-light.css?v=20260706-vimfit3">
-    - <link rel="stylesheet" href="/note-tools.css?v=20260707-oneclick">
+    - <link rel="stylesheet" href="/note-tools.css?v=20260713-imagepaste1">
     -
   # Inject custom footer html code
   footer:
@@ -455,9 +455,9 @@ inject:
     - <script src="/vendor/codemirror/addon/dialog/dialog.js"></script>
     - <script src="/vendor/codemirror/keymap/vim.js"></script>
     - <script src="/vendor/hypermd/hypermd-ai1.js?v=20260706-vimfit3"></script>
-    - <script src="/note-utils.js?v=20260713-adminfix1"></script>
+    - <script src="/note-utils.js?v=20260713-imagepaste1"></script>
     - <script src="/notes/notes.js?v=20260706-adminlock"></script>
-    - <script src="/admin/admin.js?v=20260713-adminfix1"></script>
+    - <script src="/admin/admin.js?v=20260713-imagepaste1"></script>
 # INJECT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< end
 
 
