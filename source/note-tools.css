@@ -484,11 +484,103 @@
   margin-bottom: 10px;
 }
 
-.editor-head > span {
+.editor-head-title > span {
   margin: 0;
   color: var(--note-muted);
   font-size: 0.78rem;
   font-weight: 520;
+}
+
+.editor-head-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.editor-block-add {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  place-items: center;
+  border-radius: 4px;
+  color: var(--note-faint);
+  background: transparent;
+  font-size: 0.7rem;
+}
+
+.editor-block-add:hover,
+.editor-block-add.is-active {
+  color: var(--note-text);
+  background: var(--note-sidebar-hover);
+}
+
+.editor-block-menu {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 2300 !important;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  width: min(300px, calc(100vw - 16px));
+  padding: 5px;
+  border: 1px solid rgba(55, 53, 47, 0.14);
+  border-radius: 6px;
+  color: var(--note-text);
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 14px 36px rgba(47, 45, 41, 0.16), 0 2px 5px rgba(47, 45, 41, 0.07);
+  backdrop-filter: blur(14px);
+}
+
+.editor-block-menu[hidden] {
+  display: none;
+}
+
+.editor-block-menu button {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  color: var(--note-muted);
+  background: transparent;
+  font-family: var(--note-sans);
+  font-size: 0.78rem;
+  text-align: left;
+}
+
+.editor-block-menu button:hover {
+  color: var(--note-text);
+  background: var(--note-sidebar-hover);
+}
+
+.editor-block-menu button:active {
+  transform: translateY(1px) scale(0.98);
+}
+
+.editor-block-menu button > i,
+.editor-block-menu button > strong {
+  width: 20px;
+  color: #85827b;
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.editor-block-menu button > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-block-separator {
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 3px 5px;
+  background: var(--note-line);
 }
 
 .editor-controls {
@@ -2220,6 +2312,15 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 }
 
 @media (max-width: 620px) {
+  .editor-block-add {
+    width: 40px;
+    height: 40px;
+  }
+
+  .editor-block-menu button {
+    min-height: 44px;
+  }
+
   .sidebar-view-tabs button {
     width: 40px;
     height: 40px;

@@ -7,7 +7,15 @@ require("../source/note-utils.js");
 const TurndownService = require("turndown");
 const turndownPluginGfm = require("turndown-plugin-gfm");
 
-const { createHtmlToMarkdown, extractMarkdownHeadings, markdownToHtml, mergeRemotePosts, normalizeNote } = window.TomfngNoteTools;
+const {
+  createHtmlToMarkdown,
+  extractMarkdownHeadings,
+  markdownBlockTemplate,
+  markdownToHtml,
+  mergeRemotePosts,
+  normalizeNote,
+  transformMarkdownBlockLines
+} = window.TomfngNoteTools;
 
 function post(overrides = {}) {
   return normalizeNote({
@@ -138,4 +146,34 @@ test("document outline extracts rendered headings and ignores code fences", () =
     { line: 2, level: 2, text: "章节二" },
     { line: 9, level: 3, text: "结论" }
   ]);
+});
+
+test("block commands transform and toggle Markdown lines", () => {
+  assert.deepEqual(
+    transformMarkdownBlockLines(["第一项", "", "第二项"], "ordered-list"),
+    ["1. 第一项", "", "2. 第二项"]
+  );
+  assert.deepEqual(
+    transformMarkdownBlockLines(["- 第一项", "- 第二项"], "bullet-list"),
+    ["第一项", "第二项"]
+  );
+  assert.deepEqual(
+    transformMarkdownBlockLines(["> - 保留内部列表"], "quote"),
+    ["- 保留内部列表"]
+  );
+  assert.deepEqual(
+    transformMarkdownBlockLines(["  普通内容"], "task-list"),
+    ["  - [ ] 普通内容"]
+  );
+});
+
+test("block insertion templates preserve the intended cursor selection", () => {
+  const table = markdownBlockTemplate("table");
+  assert.equal(table.body.slice(table.selectionStart, table.selectionEnd), "列 1");
+  assert.match(table.body, /\| --- \| --- \| --- \|/);
+
+  const code = markdownBlockTemplate("code-block", "const value = 1;");
+  assert.equal(code.body.slice(code.selectionStart, code.selectionEnd), "const value = 1;");
+  assert.match(code.body, /^```\n/);
+  assert.match(code.body, /\n```$/);
 });
