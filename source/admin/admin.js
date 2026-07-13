@@ -34,6 +34,23 @@ const EDITOR_VIEW_KEY = "tomfng-notes-editor-view";
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const IMAGE_UPLOAD_TOKEN = "tomfng-image-upload";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const CODEMIRROR_MODE_ROOT = "/vendor/codemirror/mode";
+const CODEMIRROR_MODE_FILES = new Set([
+  "javascript", "python", "shell", "clike", "go", "yaml", "sql", "css", "xml",
+  "htmlmixed", "jsx", "powershell", "cmake", "diff", "toml", "stex", "php",
+  "nginx", "ruby", "lua", "sass", "rust", "dockerfile", "swift", "dart", "r",
+  "perl", "haskell", "julia", "groovy", "protobuf", "commonlisp", "erlang",
+  "clojure", "coffeescript", "stylus", "pug", "handlebars", "vue"
+]);
+const CODEMIRROR_MODE_DEPENDENCIES = {
+  htmlmixed: ["xml", "javascript", "css"],
+  jsx: ["xml", "javascript"],
+  php: ["htmlmixed", "clike"],
+  sass: ["css"],
+  pug: ["javascript", "css", "htmlmixed"],
+  vue: ["xml", "javascript", "coffeescript", "css", "sass", "stylus", "pug", "handlebars"]
+};
+const codeMirrorModeLoads = new Map();
 const OWNER_LOGIN = "Nike232";
 const DEFAULT_API_BASE = "https://tomfng-blog-admin.tomfng-space.workers.dev";
 const DEFAULT_CONFIG = {
@@ -363,6 +380,90 @@ function requireOwnerAccess() {
   return false;
 }
 
+function loadCodeMirrorMode(mode, onLoad, onError) {
+  ensureCodeMirrorMode(mode).then(onLoad).catch(onError);
+}
+
+function ensureCodeMirrorMode(mode) {
+  const name = String(mode || "").toLowerCase();
+  const CodeMirror = window.CodeMirror;
+  if (!CodeMirror || !/^[a-z0-9_-]+$/.test(name)) {
+    return Promise.reject(new Error(`无法加载代码语言：${name || "unknown"}`));
+  }
+  if (Object.prototype.hasOwnProperty.call(CodeMirror.modes, name)) {
+    return Promise.resolve();
+  }
+  if (!CODEMIRROR_MODE_FILES.has(name)) {
+    definePlainCodeMirrorMode(name);
+    return Promise.resolve();
+  }
+  if (codeMirrorModeLoads.has(name)) return codeMirrorModeLoads.get(name);
+
+  const loading = Promise.all(
+    (CODEMIRROR_MODE_DEPENDENCIES[name] || []).map((dependency) => ensureCodeMirrorMode(dependency))
+  )
+    .then(() => injectCodeMirrorModeScript(name))
+    .catch((error) => {
+      codeMirrorModeLoads.delete(name);
+      throw error;
+    });
+  codeMirrorModeLoads.set(name, loading);
+  return loading;
+}
+
+function injectCodeMirrorModeScript(mode) {
+  if (Object.prototype.hasOwnProperty.call(window.CodeMirror.modes, mode)) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `${CODEMIRROR_MODE_ROOT}/${mode}/${mode}.js`;
+    script.dataset.codemirrorMode = mode;
+    script.onload = () => {
+      if (Object.prototype.hasOwnProperty.call(window.CodeMirror.modes, mode)) {
+        resolve();
+        return;
+      }
+      script.remove();
+      reject(new Error(`代码语言 ${mode} 加载后未注册`));
+    };
+    script.onerror = () => {
+      script.remove();
+      reject(new Error(`代码语言 ${mode} 加载失败`));
+    };
+    document.head.appendChild(script);
+  });
+}
+
+function definePlainCodeMirrorMode(mode) {
+  if (Object.prototype.hasOwnProperty.call(window.CodeMirror.modes, mode)) return;
+  window.CodeMirror.defineMode(mode, () => ({
+    token(stream) {
+      stream.skipToEnd();
+      return null;
+    }
+  }));
+}
+
+function installCodeMirrorLanguageAliases() {
+  const CodeMirror = window.CodeMirror;
+  const originalFindMode = CodeMirror?.findModeByName;
+  if (!originalFindMode || originalFindMode.tomfngExtended) return;
+
+  function findModeByLanguage(language) {
+    const direct = originalFindMode.call(CodeMirror, language);
+    if (direct) return direct;
+    const requested = String(language || "").toLowerCase();
+    return CodeMirror.modeInfo.find((info) => {
+      const mimes = info.mimes || (info.mime ? [info.mime] : []);
+      return String(info.mode || "").toLowerCase() === requested
+        || (info.ext || []).some((extension) => extension.toLowerCase() === requested)
+        || mimes.some((mime) => mime.toLowerCase() === requested);
+    });
+  }
+
+  findModeByLanguage.tomfngExtended = true;
+  CodeMirror.findModeByName = findModeByLanguage;
+}
+
 function initMarkdownEditor() {
   if (!window.CodeMirror) {
     fields.content.classList.add("is-fallback-editor");
@@ -371,6 +472,7 @@ function initMarkdownEditor() {
     return;
   }
 
+  installCodeMirrorLanguageAliases();
   const useHyperMD = Boolean(window.HyperMD && typeof window.HyperMD.fromTextArea === "function");
   const requestedKeyMap = state.editorMode === "vim" && window.CodeMirror.keyMap.vim ? "vim" : "default";
   if (requestedKeyMap !== "vim") {
@@ -388,7 +490,10 @@ function initMarkdownEditor() {
   const katexRenderer = window.HyperMD_PowerPack?.["fold-math-with-katex"]?.KatexRenderer || null;
 
   const editorOptions = {
-    mode: useHyperMD ? "text/x-hypermd" : {
+    mode: useHyperMD ? {
+      name: "hypermd",
+      fencedCodeBlockHighlighting: true
+    } : {
       name: "markdown",
       highlightFormatting: true,
       taskLists: true,
@@ -433,7 +538,7 @@ function initMarkdownEditor() {
     hmdFoldMath: katexRenderer ? { renderer: katexRenderer } : false,
     hmdInsertFile: false,
     hmdReadLink: { baseURI: `${window.location.origin}/` },
-    hmdModeLoader: false,
+    hmdModeLoader: useHyperMD ? loadCodeMirrorMode : false,
     extraKeys: {
       Enter: enterCommand,
       "Shift-Enter": shiftEnterCommand,

@@ -441,12 +441,17 @@ inject:
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-mode.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-light.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.17.0">
-    - <link rel="stylesheet" href="/note-tools.css?v=20260714-typora10">
+    - <link rel="stylesheet" href="/note-tools.css?v=20260714-typora14">
     -
   # Inject custom footer html code
   footer:
     - <script src="/vendor/codemirror/lib/codemirror.js"></script>
+    - <script src="/vendor/codemirror/mode/meta.js"></script>
+    - <script src="/vendor/codemirror/addon/mode/simple.js"></script>
+    - <script src="/vendor/codemirror/addon/mode/multiplex.js"></script>
+    - <script src="/vendor/codemirror/addon/mode/overlay.js"></script>
     - <script src="/vendor/codemirror/mode/markdown/markdown.js"></script>
+    - <script src="/vendor/codemirror/mode/stex/stex.js"></script>
     - <script src="/vendor/codemirror/addon/edit/continuelist.js"></script>
     - <script src="/vendor/codemirror/addon/edit/closebrackets.js"></script>
     - <script src="/vendor/codemirror/addon/edit/matchbrackets.js"></script>
@@ -466,7 +471,7 @@ inject:
     - <script src="/vendor/dompurify/purify.min.js?v=3.4.12"></script>
     - <script src="/note-utils.js?v=20260713-typora9"></script>
     - <script src="/notes/notes.js?v=20260706-adminlock"></script>
-    - <script src="/admin/admin.js?v=20260714-typora11"></script>
+    - <script src="/admin/admin.js?v=20260714-typora13"></script>
 # INJECT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< end
 
 

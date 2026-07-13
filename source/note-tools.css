@@ -1437,15 +1437,40 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 }
 
 .editor-field .cm-s-hypermd-light pre.HyperMD-codeblock {
-  margin: 0.35rem 0 !important;
-  padding: 0.55rem 0.7rem !important;
-  border: 1px solid var(--note-line-soft) !important;
-  border-radius: 6px !important;
+  margin: 0 !important;
+  padding: 0.08rem 0.85rem !important;
+  border: 0 !important;
+  border-radius: 0 !important;
   color: #3e3b35;
-  background: #f7f7f5 !important;
+  background: transparent !important;
   font-family: var(--note-mono) !important;
   font-size: 0.92rem !important;
   line-height: 1.75 !important;
+  letter-spacing: 0;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock-begin {
+  margin-top: 0.65rem !important;
+  padding-top: 0.5rem !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock-end {
+  margin-bottom: 0.7rem !important;
+  padding-bottom: 0.5rem !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line.HyperMD-codeblock-begin,
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line.HyperMD-codeblock-end {
+  min-height: 0.42rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+  font-size: 0 !important;
+  line-height: 0.42rem !important;
+}
+
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line.HyperMD-codeblock-begin > span,
+.editor-field .cm-s-hypermd-light pre.hmd-inactive-line.HyperMD-codeblock-end > span {
+  opacity: 0;
 }
 
 .editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span {
@@ -1453,7 +1478,71 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
 }
 
 .editor-field .cm-s-hypermd-light div.HyperMD-codeblock-bg {
-  background: transparent !important;
+  left: 0;
+  right: 0;
+  border-right: 1px solid #e3e2de;
+  border-left: 1px solid #e3e2de;
+  background: #f7f7f5 !important;
+}
+
+.editor-field .cm-s-hypermd-light div.HyperMD-codeblock-begin-bg {
+  border-top: 1px solid #e3e2de;
+  border-radius: 6px 6px 0 0;
+}
+
+.editor-field .cm-s-hypermd-light div.HyperMD-codeblock-end-bg {
+  border-bottom: 1px solid #e3e2de;
+  border-radius: 0 0 6px 6px;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-comment {
+  padding: 0;
+  border-radius: 0;
+  color: #89867f;
+  background: transparent;
+  font-style: italic;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-keyword,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-qualifier {
+  color: #9a4e32;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-atom,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-number,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-bool {
+  color: #74558f;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-def,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-variable-2,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-variable-3 {
+  color: #2f6487;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-string,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-string-2 {
+  color: #3f7052;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-property,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-attribute {
+  color: #356879;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-tag,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-builtin {
+  color: #8a4148;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-operator,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-meta {
+  color: #8b633b;
+}
+
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-bracket,
+.editor-field .cm-s-hypermd-light pre.HyperMD-codeblock span.cm-punctuation {
+  color: #74716a;
 }
 
 .editor-field .cm-s-hypermd-light pre.HyperMD-list-line {
