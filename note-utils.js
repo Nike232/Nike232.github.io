@@ -395,6 +395,96 @@ function safeClipboardUrl(value, imageOnly) {
   return "";
 }
 
+function findMarkdownLinkAt(line, ch) {
+  const value = String(line || "");
+  const cursor = Math.max(0, Math.min(value.length, Number(ch) || 0));
+
+  for (let open = 0; open < value.length; open += 1) {
+    if (value[open] !== "[" || isEscapedMarkdownCharacter(value, open) || value[open - 1] === "!") continue;
+    const labelClose = findBalancedMarkdownDelimiter(value, open, "[", "]");
+    if (labelClose < 0 || value[labelClose + 1] !== "(") continue;
+    const destinationClose = findBalancedMarkdownDelimiter(value, labelClose + 1, "(", ")");
+    if (destinationClose < 0) continue;
+    if (cursor < open || cursor > destinationClose + 1) {
+      open = destinationClose;
+      continue;
+    }
+
+    const destination = parseMarkdownLinkDestination(value.slice(labelClose + 2, destinationClose));
+    return {
+      from: open,
+      to: destinationClose + 1,
+      label: unescapeMarkdownLinkText(value.slice(open + 1, labelClose)),
+      url: destination.url,
+      titleSuffix: destination.titleSuffix
+    };
+  }
+  return null;
+}
+
+function findBalancedMarkdownDelimiter(value, open, opening, closing) {
+  let depth = 1;
+  for (let index = open + 1; index < value.length; index += 1) {
+    if (isEscapedMarkdownCharacter(value, index)) continue;
+    if (value[index] === opening) depth += 1;
+    if (value[index] !== closing) continue;
+    depth -= 1;
+    if (!depth) return index;
+  }
+  return -1;
+}
+
+function parseMarkdownLinkDestination(raw) {
+  const value = String(raw || "");
+  const leading = /^\s*/.exec(value)?.[0].length || 0;
+  const content = value.slice(leading);
+  if (!content) return { url: "", titleSuffix: "" };
+
+  if (content[0] === "<") {
+    for (let index = 1; index < content.length; index += 1) {
+      if (content[index] !== ">" || isEscapedMarkdownCharacter(content, index)) continue;
+      return {
+        url: unescapeMarkdownLinkText(content.slice(1, index)),
+        titleSuffix: content.slice(index + 1)
+      };
+    }
+  }
+
+  let end = 0;
+  while (end < content.length && !/\s/.test(content[end])) {
+    if (content[end] === "\\" && end + 1 < content.length) end += 1;
+    end += 1;
+  }
+  return {
+    url: unescapeMarkdownLinkText(content.slice(0, end)),
+    titleSuffix: content.slice(end)
+  };
+}
+
+function unescapeMarkdownLinkText(value) {
+  return String(value || "").replace(/\\([\\[\]()<>])/g, "$1");
+}
+
+function normalizeMarkdownLinkUrl(value) {
+  const input = String(value || "").trim();
+  if (!input || /[\r\n\t<>\\]/.test(input)) return "";
+  const url = input.replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29");
+  if (/^(?:https?:\/\/|mailto:)[^\s]+$/i.test(url)) return url;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(url) || /^\/\//.test(url)) return "";
+  if (/^(?:#|\/(?!\/)|\.\.?\/)?[^\s]+$/.test(url)) return url;
+  return "";
+}
+
+function formatMarkdownLink(label, url, titleSuffix = "") {
+  const text = String(label || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/([\[\]])/g, "\\$1")
+    .replace(/[\r\n]+/g, " ");
+  const destination = normalizeMarkdownLinkUrl(url);
+  if (!text.trim() || !destination) return "";
+  return `[${text}](${destination}${String(titleSuffix || "")})`;
+}
+
 function htmlTableToMarkdown(table) {
   const rows = Array.from(table.rows || []);
   if (!rows.length) return "";
@@ -862,6 +952,8 @@ window.TomfngNoteTools = {
   escapeHtml,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  findMarkdownLinkAt,
+  formatMarkdownLink,
   formatDate,
   getMarkdownTableContext,
   makeId,
@@ -874,6 +966,7 @@ window.TomfngNoteTools = {
   noteContentFingerprint,
   normalizeCategory,
   normalizeEditorViewState,
+  normalizeMarkdownLinkUrl,
   normalizeNote,
   normalizeNotesData,
   normalizeTags,
