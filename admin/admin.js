@@ -22,6 +22,9 @@ const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
 const SESSION_KEY = "tomfng-notes-admin-session";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
+const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+const IMAGE_UPLOAD_TOKEN = "tomfng-image-upload";
+const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const OWNER_LOGIN = "Nike232";
 const DEFAULT_API_BASE = "https://tomfng-blog-admin.tomfng-space.workers.dev";
 const DEFAULT_CONFIG = {
@@ -47,6 +50,8 @@ const state = {
   typingTimer: null,
   autosaveTimer: null,
   secondaryRenderTimer: null,
+  imageUploads: new Map(),
+  imageUploadQueue: Promise.resolve(),
   autosaveStatus: "saved",
   syncingEditor: false,
   publishPollId: 0
@@ -114,7 +119,9 @@ async function startWorkspace() {
   if (localData) {
     state.data = normalizeNotesData(localData);
     state.selectedId = state.data.notes[0]?.id || null;
-    setStatus("已载入本地草稿");
+    const recovered = clearStaleImageUploadTokens();
+    if (recovered) markDirty(`已清理 ${recovered} 个未完成的图片上传`);
+    else setStatus("已载入本地草稿");
   } else {
     state.data = normalizeNotesData({ notes: [] });
   }
@@ -221,6 +228,7 @@ function requireOwnerAccess() {
 function initMarkdownEditor() {
   if (!window.CodeMirror) {
     fields.content.classList.add("is-fallback-editor");
+    bindFallbackImageTransfers();
     updateEditorStats();
     return;
   }
@@ -264,6 +272,8 @@ function initMarkdownEditor() {
     foldGutter: false,
     gutters: [],
     hmdFoldMath: false,
+    hmdInsertFile: false,
+    hmdReadLink: { baseURI: `${window.location.origin}/` },
     hmdModeLoader: false,
     extraKeys: {
       Enter: enterCommand,
@@ -291,6 +301,8 @@ function initMarkdownEditor() {
     ? window.HyperMD.fromTextArea(fields.content, editorOptions)
     : window.CodeMirror.fromTextArea(fields.content, editorOptions);
 
+  bindEditorImageTransfers();
+
   state.editor.on("change", (_cm, change) => {
     if (state.syncingEditor) return;
     fields.content.value = state.editor.getValue();
@@ -312,6 +324,340 @@ function initMarkdownEditor() {
   syncEditorCursorStyle();
   setEditorFocusState(state.editor.hasFocus?.());
   updateEditorStats();
+}
+
+function bindEditorImageTransfers() {
+  if (!state.editor) return;
+  const wrapper = state.editor.getWrapperElement?.();
+
+  state.editor.on("paste", (_cm, event) => {
+    const files = imageFilesFromTransfer(event.clipboardData || window.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    insertImageUploads(files);
+  });
+
+  state.editor.on("dragover", (_cm, event) => {
+    if (!event.dataTransfer?.types?.includes?.("Files")) return;
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+    wrapper?.classList.add("is-image-dragover");
+  });
+  state.editor.on("dragleave", (_cm, event) => {
+    if (!wrapper || wrapper.contains(event.relatedTarget)) return;
+    wrapper.classList.remove("is-image-dragover");
+  });
+  state.editor.on("drop", (cm, event) => {
+    wrapper?.classList.remove("is-image-dragover");
+    const files = imageFilesFromTransfer(event.dataTransfer);
+    if (!files.length) return;
+    event.preventDefault();
+    cm.setCursor(cm.coordsChar({ left: event.clientX, top: event.clientY }, "window"));
+    insertImageUploads(files);
+  });
+}
+
+function bindFallbackImageTransfers() {
+  fields.content.addEventListener("paste", (event) => {
+    const files = imageFilesFromTransfer(event.clipboardData || window.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    insertImageUploads(files);
+  });
+  fields.content.addEventListener("dragover", (event) => {
+    if (!event.dataTransfer?.types?.includes?.("Files")) return;
+    event.preventDefault();
+    fields.content.classList.add("is-image-dragover");
+  });
+  fields.content.addEventListener("dragleave", () => fields.content.classList.remove("is-image-dragover"));
+  fields.content.addEventListener("drop", (event) => {
+    fields.content.classList.remove("is-image-dragover");
+    const files = imageFilesFromTransfer(event.dataTransfer);
+    if (!files.length) return;
+    event.preventDefault();
+    insertImageUploads(files);
+  });
+}
+
+function imageFilesFromTransfer(transfer) {
+  if (!transfer) return [];
+  const itemFiles = [...(transfer.items || [])]
+    .filter((item) => item.kind === "file" && String(item.type || "").startsWith("image/"))
+    .map((item) => item.getAsFile())
+    .filter(Boolean);
+  const files = itemFiles.length ? itemFiles : [...(transfer.files || [])]
+    .filter((file) => String(file.type || "").startsWith("image/"));
+  return files.filter((file, index) => files.indexOf(file) === index);
+}
+
+function insertImageUploads(files) {
+  if (!requireOwnerAccess()) return;
+  const note = getSelectedNote();
+  if (!note || !files.length) return;
+
+  const id = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+  const task = {
+    id,
+    noteId: note.id,
+    token: `<!--${IMAGE_UPLOAD_TOKEN}:${id}-->`,
+    files: [...files],
+    status: "new",
+    current: 0,
+    error: "",
+    marker: null,
+    widget: null,
+    previewUrl: ""
+  };
+  task.previewUrl = task.files[0] && URL.createObjectURL ? URL.createObjectURL(task.files[0]) : "";
+  state.imageUploads.set(task.id, task);
+
+  if (state.editor) {
+    const cm = state.editor;
+    const from = cm.getCursor("from");
+    const to = cm.getCursor("to");
+    const before = cm.getRange({ line: from.line, ch: 0 }, from);
+    const after = cm.getRange(to, { line: to.line, ch: cm.getLine(to.line).length });
+    const prefix = before.trim() ? "\n\n" : "";
+    const suffix = after.trim() ? "\n\n" : "\n";
+    cm.replaceSelection(`${prefix}${task.token}${suffix}`, "end", "+image-upload");
+    restorePendingImageUploads();
+  } else {
+    const start = fields.content.selectionStart || 0;
+    const end = fields.content.selectionEnd || start;
+    const value = fields.content.value;
+    const before = value.slice(0, start);
+    const after = value.slice(end);
+    const prefix = before && !before.endsWith("\n") ? "\n\n" : "";
+    const suffix = after && !after.startsWith("\n") ? "\n\n" : "\n";
+    fields.content.setRangeText(`${prefix}${task.token}${suffix}`, start, end, "end");
+    fields.content.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  enqueueImageUpload(task);
+}
+
+function enqueueImageUpload(task) {
+  if (!task || task.status === "queued" || task.status === "uploading") return;
+  task.status = "queued";
+  task.error = "";
+  updateImageUploadWidget(task);
+  state.imageUploadQueue = state.imageUploadQueue
+    .catch(() => undefined)
+    .then(() => runImageUpload(task));
+}
+
+async function runImageUpload(task) {
+  if (!state.imageUploads.has(task.id)) return;
+  task.status = "uploading";
+  task.current = 0;
+  updateImageUploadWidget(task);
+
+  try {
+    const uploaded = [];
+    for (let index = 0; index < task.files.length; index += 1) {
+      if (!state.imageUploads.has(task.id)) return;
+      const file = task.files[index];
+      validateImageFile(file);
+      task.current = index + 1;
+      updateImageUploadWidget(task);
+      const dataUrl = await fileToDataUrl(file);
+      if (!state.imageUploads.has(task.id)) return;
+      const result = await apiFetch("/api/assets", {
+        method: "POST",
+        body: JSON.stringify({ name: file.name || `image-${index + 1}`, dataUrl, noteId: task.noteId })
+      });
+      if (!state.imageUploads.has(task.id)) return;
+      if (!isSafeImageUrl(result.url)) throw new Error("上传服务返回了无效的图片地址");
+      uploaded.push(`![${markdownImageAlt(file.name)}](${result.url})`);
+    }
+    completeImageUpload(task, uploaded.join("\n\n"));
+  } catch (error) {
+    if (!state.imageUploads.has(task.id)) return;
+    task.status = "error";
+    task.error = error.message || "上传失败";
+    updateImageUploadWidget(task);
+    setStatus(`图片上传失败：${task.error}`, true);
+  }
+}
+
+function validateImageFile(file) {
+  if (!SUPPORTED_IMAGE_TYPES.has(String(file?.type || "").toLowerCase())) {
+    throw new Error("只支持 PNG、JPEG、WebP 和 GIF 图片");
+  }
+  if (!file.size) throw new Error("图片内容为空");
+  if (file.size > MAX_IMAGE_UPLOAD_BYTES) throw new Error("单张图片不能超过 10 MB");
+}
+
+function fileToDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
+    reader.addEventListener("error", () => reject(new Error("无法读取图片")), { once: true });
+    reader.readAsDataURL(file);
+  });
+}
+
+function completeImageUpload(task, markdown) {
+  const count = task.files.length;
+  if (!replaceImageUploadToken(task, markdown)) {
+    removeImageUploadTask(task);
+    setStatus("图片已上传，但插入位置已被删除", true);
+    return;
+  }
+  removeImageUploadTask(task, { keepContent: true });
+  setStatus(`已插入 ${count} 张图片`);
+}
+
+function replaceImageUploadToken(task, replacement) {
+  const note = state.data.notes.find((item) => item.id === task.noteId);
+  if (!note) return false;
+
+  if (state.selectedId === task.noteId) {
+    if (state.editor) {
+      const index = state.editor.getValue().indexOf(task.token);
+      if (index < 0) return false;
+      const from = state.editor.posFromIndex(index);
+      const to = state.editor.posFromIndex(index + task.token.length);
+      task.marker?.clear();
+      task.marker = null;
+      state.editor.replaceRange(replacement, from, to, "+image-upload");
+      return true;
+    }
+    if (!fields.content.value.includes(task.token)) return false;
+    fields.content.value = fields.content.value.replace(task.token, replacement);
+    fields.content.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  if (!note.content.includes(task.token)) return false;
+  note.content = note.content.replace(task.token, replacement);
+  note.updatedAt = new Date().toISOString();
+  note.localDirty = true;
+  markDirty("图片已上传");
+  renderList();
+  return true;
+}
+
+function removeImageUploadTask(task, { keepContent = false } = {}) {
+  if (!task) return;
+  if (!keepContent) replaceImageUploadToken(task, "");
+  task.marker?.clear();
+  task.marker = null;
+  state.imageUploads.delete(task.id);
+  if (task.previewUrl && URL.revokeObjectURL) URL.revokeObjectURL(task.previewUrl);
+}
+
+function restorePendingImageUploads() {
+  if (!state.editor || !state.selectedId) return;
+  const value = state.editor.getValue();
+  state.imageUploads.forEach((task) => {
+    if (task.noteId !== state.selectedId) return;
+    const existing = task.marker?.find?.();
+    if (existing) return;
+    const index = value.indexOf(task.token);
+    if (index < 0) return;
+    const from = state.editor.posFromIndex(index);
+    const to = state.editor.posFromIndex(index + task.token.length);
+    task.widget = createImageUploadWidget(task);
+    task.marker = state.editor.markText(from, to, {
+      replacedWith: task.widget,
+      atomic: true,
+      clearOnEnter: false,
+      handleMouseEvents: true
+    });
+    updateImageUploadWidget(task);
+  });
+}
+
+function createImageUploadWidget(task) {
+  const widget = document.createElement("span");
+  widget.className = "note-image-upload";
+  widget.setAttribute("role", "status");
+  widget.setAttribute("contenteditable", "false");
+  widget.innerHTML = `
+    <span class="note-image-upload-preview"></span>
+    <span class="note-image-upload-copy">
+      <strong data-upload-label>准备上传</strong>
+      <small data-upload-detail></small>
+    </span>
+    <span class="note-image-upload-actions" data-upload-actions hidden>
+      <button type="button" data-upload-retry title="重试" aria-label="重试上传"><i class="fa-solid fa-rotate"></i></button>
+      <button type="button" data-upload-remove title="移除" aria-label="移除图片"><i class="fa-regular fa-trash-can"></i></button>
+    </span>
+  `;
+  const preview = widget.querySelector(".note-image-upload-preview");
+  if (task.previewUrl) {
+    const image = document.createElement("img");
+    image.src = task.previewUrl;
+    image.alt = "";
+    preview.appendChild(image);
+  }
+  widget.addEventListener("mousedown", (event) => event.stopPropagation());
+  widget.querySelector("[data-upload-retry]").addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    enqueueImageUpload(task);
+  });
+  widget.querySelector("[data-upload-remove]").addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    removeImageUploadTask(task);
+    setStatus("已移除待上传图片");
+  });
+  return widget;
+}
+
+function updateImageUploadWidget(task) {
+  const widget = task.widget;
+  if (!widget) return;
+  const label = widget.querySelector("[data-upload-label]");
+  const detail = widget.querySelector("[data-upload-detail]");
+  const actions = widget.querySelector("[data-upload-actions]");
+  widget.classList.toggle("is-error", task.status === "error");
+  widget.classList.toggle("is-loading", task.status === "queued" || task.status === "uploading");
+  if (task.status === "error") {
+    label.textContent = "上传失败";
+    detail.textContent = task.error;
+    widget.title = task.error;
+    actions.hidden = false;
+  } else {
+    label.textContent = task.status === "queued" ? "等待上传" : "正在上传";
+    detail.textContent = `${Math.max(task.current, 1)}/${task.files.length} · ${task.files[0]?.name || "图片"}`;
+    widget.removeAttribute("title");
+    actions.hidden = true;
+  }
+  task.marker?.changed?.();
+}
+
+function markdownImageAlt(filename) {
+  const base = String(filename || "图片").replace(/\.[^.]+$/, "").trim();
+  const alt = /^(image|clipboard|blob)([-_ ]?\d+)?$/i.test(base) ? "图片" : (base || "图片");
+  return alt.replace(/([\\\[\]])/g, "\\$1").replace(/[\r\n]+/g, " ");
+}
+
+function isSafeImageUrl(value) {
+  return /^\/(?!\/)[^\s]+$/.test(String(value || "")) || /^https?:\/\/[^\s]+$/i.test(String(value || ""));
+}
+
+function hasPendingImageUploads(noteId = "") {
+  return [...state.imageUploads.values()].some((task) => !noteId || task.noteId === noteId);
+}
+
+function clearStaleImageUploadTokens() {
+  let count = 0;
+  const pattern = new RegExp(`<!--${IMAGE_UPLOAD_TOKEN}:[^>]+-->`, "g");
+  state.data.notes.forEach((note) => {
+    const content = String(note.content || "");
+    const matches = content.match(pattern);
+    if (!matches?.length) return;
+    count += matches.length;
+    note.content = content.replace(pattern, "");
+    note.localDirty = true;
+    note.updatedAt = new Date().toISOString();
+  });
+  return count;
 }
 
 function getEditorField() {
@@ -639,6 +985,9 @@ async function deleteSelectedNote() {
     setBusy(false);
   }
 
+  [...state.imageUploads.values()]
+    .filter((task) => task.noteId === note.id)
+    .forEach((task) => removeImageUploadTask(task));
   state.data.notes = state.data.notes.filter((item) => item.id !== note.id);
   state.selectedId = state.data.notes[0]?.id || null;
   markDirty(published ? "已提交删除，网站正在更新" : "已删除本地草稿");
@@ -818,6 +1167,7 @@ function setEditorValue(value) {
   fields.content.value = nextValue;
   if (!state.editor) return;
   if (state.editor.getValue() === nextValue) {
+    restorePendingImageUploads();
     updateEditorStats();
     return;
   }
@@ -825,6 +1175,7 @@ function setEditorValue(value) {
   state.editor.setValue(nextValue);
   state.editor.clearHistory();
   state.syncingEditor = false;
+  restorePendingImageUploads();
   updateEditorStats();
 }
 
@@ -1183,6 +1534,10 @@ async function pullRemote() {
 }
 
 async function syncRemotePosts({ initial = false } = {}) {
+  if (hasPendingImageUploads()) {
+    setStatus("图片仍在上传，请完成或移除后再同步", true);
+    return;
+  }
   state.publishPollId += 1;
   if (state.autosaveTimer || state.dirty) autoSaveWorkspace({ silent: true });
   const selected = getSelectedNote();
@@ -1216,6 +1571,10 @@ async function publishRemote() {
   const note = getSelectedNote();
   if (!note) {
     setStatus("先选择一篇文章", true);
+    return;
+  }
+  if (hasPendingImageUploads(note.id)) {
+    setStatus("图片仍在上传，请完成或移除后再发布", true);
     return;
   }
   fields.slug.value = syncDraftSlug(note);

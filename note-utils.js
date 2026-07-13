@@ -158,7 +158,8 @@ function mergeRemotePosts(localData, remoteData) {
 }
 
 function markdownToHtml(markdown = "") {
-  const segments = String(markdown).split(/```/);
+  const cleanMarkdown = String(markdown).replace(/<!--tomfng-image-upload:[^>]+-->/g, "");
+  const segments = cleanMarkdown.split(/```/);
   return segments
     .map((segment, index) => {
       if (index % 2 === 1) {
@@ -231,6 +232,15 @@ function renderBlocks(markdown) {
 
 function inlineMarkdown(value) {
   let html = escapeHtml(value);
+  const images = [];
+  html = html.replace(
+    /!\[([^\]]*)\]\(((?:https?:\/\/|\/(?!\/))[^)\s]+)\)/gi,
+    (_match, alt, url) => {
+      const token = `@@TOMFNG_IMAGE_${images.length}@@`;
+      images.push(`<img src="${url}" alt="${alt}" loading="lazy" decoding="async">`);
+      return token;
+    }
+  );
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
   html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
@@ -238,6 +248,7 @@ function inlineMarkdown(value) {
     /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
     '<a href="$2" target="_blank" rel="noreferrer">$1</a>'
   );
+  html = html.replace(/@@TOMFNG_IMAGE_(\d+)@@/g, (_match, index) => images[Number(index)] || "");
   return html;
 }
 
