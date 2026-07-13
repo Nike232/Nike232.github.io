@@ -10,15 +10,17 @@ const {
   makeId,
   makeSlug,
   markdownToHtml,
+  mergeRemotePosts,
+  noteContentFingerprint,
   normalizeCategory,
   normalizeNote,
   normalizeNotesData,
   normalizeTags
 } = tools;
 
-const DATA_URL = "/notes-data.json";
 const STORAGE_KEY = "tomfng-notes-workspace";
 const CONFIG_KEY = "tomfng-notes-github-config";
+const SESSION_KEY = "tomfng-notes-admin-session";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const OWNER_LOGIN = "Nike232";
 const DEFAULT_API_BASE = "https://tomfng-blog-admin.tomfng-space.workers.dev";
@@ -44,8 +46,10 @@ const state = {
   typingPulse: null,
   typingTimer: null,
   autosaveTimer: null,
+  secondaryRenderTimer: null,
   autosaveStatus: "saved",
-  syncingEditor: false
+  syncingEditor: false,
+  publishPollId: 0
 };
 
 const fields = {
@@ -111,10 +115,11 @@ async function startWorkspace() {
     state.data = normalizeNotesData(localData);
     state.selectedId = state.data.notes[0]?.id || null;
     setStatus("已载入本地草稿");
-    render();
-    return;
+  } else {
+    state.data = normalizeNotesData({ notes: [] });
   }
-  await loadPublicData();
+  render();
+  await syncRemotePosts({ initial: true });
 }
 
 function bindAuthEvents() {
@@ -134,7 +139,6 @@ function bindWorkspaceEvents() {
   elements.logoutAdmin.addEventListener("click", logoutAdmin);
   elements.toggleVim.addEventListener("click", toggleEditorMode);
   Object.values(fields).forEach((field) => field.addEventListener("input", updateSelectedFromFields));
-  fields.status.addEventListener("change", updateSelectedFromFields);
   elements.form.addEventListener("submit", (event) => event.preventDefault());
   window.addEventListener("beforeunload", flushAutosave);
 }
@@ -563,22 +567,6 @@ function isUsableVimRect(rect) {
   return Boolean(rect && rect.width >= 2 && rect.height >= 8);
 }
 
-async function loadPublicData() {
-  setBusy(true);
-  try {
-    const response = await fetch(`${DATA_URL}?v=${Date.now()}`, { cache: "no-store" });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    state.data = normalizeNotesData(await response.json());
-    state.selectedId = state.data.notes[0]?.id || null;
-    setStatus("已载入公开数据");
-  } catch (error) {
-    setStatus(`读取失败：${error.message}`, true);
-  } finally {
-    setBusy(false);
-    render();
-  }
-}
-
 function createNote() {
   if (!requireOwnerAccess()) return;
   const now = new Date().toISOString();
@@ -592,7 +580,8 @@ function createNote() {
     summary: "",
     content: "",
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    localDirty: true
   });
   state.data.notes.unshift(note);
   state.selectedId = note.id;
@@ -611,6 +600,9 @@ function duplicateSelectedNote() {
     title: `${note.title} 副本`,
     slug: `${note.slug || makeSlug(note.title)}-copy`,
     status: "draft",
+    remotePath: "",
+    remoteSha: "",
+    localDirty: true,
     createdAt: now,
     updatedAt: now
   });
@@ -620,13 +612,36 @@ function duplicateSelectedNote() {
   render();
 }
 
-function deleteSelectedNote() {
+async function deleteSelectedNote() {
   if (!requireOwnerAccess()) return;
   const note = getSelectedNote();
   if (!note) return;
+  const published = Boolean(note.remotePath);
+  const message = published
+    ? `确定删除《${note.title || "无标题"}》吗？文章会从博客中移除，本地未发布修改也会删除。`
+    : `确定删除草稿《${note.title || "无标题"}》吗？此操作无法撤销。`;
+  if (!window.confirm(message)) return;
+  state.publishPollId += 1;
+
+  if (published) {
+    setBusy(true);
+    setStatus("正在提交删除...");
+    try {
+      await apiFetch("/api/posts", {
+        method: "DELETE",
+        body: JSON.stringify({ path: note.remotePath, title: note.title })
+      });
+    } catch (error) {
+      setStatus(`删除失败：${error.message}`, true);
+      setBusy(false);
+      return;
+    }
+    setBusy(false);
+  }
+
   state.data.notes = state.data.notes.filter((item) => item.id !== note.id);
   state.selectedId = state.data.notes[0]?.id || null;
-  markDirty("已在本地删除");
+  markDirty(published ? "已提交删除，网站正在更新" : "已删除本地草稿");
   render();
 }
 
@@ -637,23 +652,32 @@ function updateSelectedFromFields() {
   note.title = fields.title.value.trimStart();
   note.category = normalizeCategory(fields.category.value);
   note.tags = normalizeTags(fields.tags.value);
-  note.status = fields.status.value;
-  note.slug = note.status === "published"
-    ? ensureNoteSlug({ ...note, slug: fields.slug.value.trim() })
+  note.slug = note.remotePath
+    ? ensureNoteSlug({ ...note, slug: note.slug || fields.slug.value.trim() })
     : autoSlugForTitle(note.title);
   fields.slug.value = note.slug;
   note.summary = fields.summary.value.trimStart();
   note.content = getEditorValue();
   note.updatedAt = new Date().toISOString();
+  note.localDirty = true;
   if (state.category !== "all" && state.category !== note.category) {
     state.category = note.category;
   }
   markDirty("正在编辑");
-  renderCategories();
-  renderList();
-  renderPreview(note);
   validateSelected();
   updateEditorStats();
+  scheduleSecondaryRender(note.id);
+}
+
+function scheduleSecondaryRender(noteId) {
+  window.clearTimeout(state.secondaryRenderTimer);
+  state.secondaryRenderTimer = window.setTimeout(() => {
+    state.secondaryRenderTimer = null;
+    renderCategories();
+    renderList();
+    const note = state.data.notes.find((item) => item.id === noteId);
+    if (note && note.id === state.selectedId) renderPreview(note);
+  }, 120);
 }
 
 function render() {
@@ -715,11 +739,13 @@ function renderList() {
 
   elements.list.innerHTML = visibleNotes.map((note) => {
     const active = note.id === state.selectedId ? " is-active" : "";
+    const stateName = note.remotePath ? (note.localDirty ? "有修改" : "已发布") : "草稿";
+    const stateClass = note.remotePath ? (note.localDirty ? "pending" : "published") : "draft";
     return `
-      <button class="note-row${active}" type="button" data-id="${escapeHtml(note.id)}">
+      <button class="note-row${active}" type="button" data-id="${escapeHtml(note.id)}"${state.busy ? " disabled" : ""}>
         <span class="note-row-title">
           <span>${escapeHtml(note.title || "无标题")}</span>
-          <span class="state-pill state-${escapeHtml(note.status)}">${escapeHtml(note.status)}</span>
+          <span class="state-pill state-${stateClass}">${stateName}</span>
         </span>
         <span class="note-row-meta">${escapeHtml(normalizeCategory(note.category))} / ${formatDate(note.updatedAt)}</span>
         <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 110) || "无摘要")}</span>
@@ -737,10 +763,11 @@ function renderList() {
 
 function renderEditor() {
   const note = getSelectedNote();
-  const disabled = !note;
+  const disabled = !note || state.busy;
   Object.values(fields).forEach((field) => {
     field.disabled = disabled;
   });
+  fields.status.disabled = true;
   elements.duplicateNote.disabled = disabled;
   elements.deleteNote.disabled = disabled;
 
@@ -768,10 +795,10 @@ function renderEditor() {
   fields.slug.value = syncDraftSlug(note);
   fields.category.value = normalizeCategory(note.category);
   fields.tags.value = note.tags.join(", ");
-  fields.status.value = note.status;
+  fields.status.value = note.remotePath ? "published" : "draft";
   fields.summary.value = note.summary;
   setEditorValue(note.content);
-  setEditorEnabled(true);
+  setEditorEnabled(!state.busy);
   renderPreview(note);
   validateSelected();
 }
@@ -853,12 +880,12 @@ function contentWithoutTitleHeading(note) {
 
 function renderDirtyState() {
   const labels = {
-    pending: "未保存",
-    saving: "保存中",
-    saved: "已保存",
-    error: "保存失败"
+    pending: "等待本机保存",
+    saving: "保存到本机",
+    saved: "已保存到本机",
+    error: "本机保存失败"
   };
-  elements.dirty.textContent = labels[state.autosaveStatus] || (state.dirty ? "未保存" : "已保存");
+  elements.dirty.textContent = labels[state.autosaveStatus] || (state.dirty ? "等待本机保存" : "已保存到本机");
   elements.dirty.className = `state-pill state-${state.autosaveStatus || (state.dirty ? "pending" : "saved")}`;
 }
 
@@ -945,7 +972,28 @@ function setStatus(message, isError = false, linkUrl = "") {
 
 function setBusy(value) {
   state.busy = value;
-  [elements.pullRemote, elements.publishRemote, elements.saveLocal, elements.saveConfig, elements.logoutAdmin].forEach((button) => {
+  [
+    elements.newNote,
+    elements.duplicateNote,
+    elements.deleteNote,
+    elements.pullRemote,
+    elements.publishRemote,
+    elements.saveLocal,
+    elements.saveConfig,
+    elements.logoutAdmin,
+    elements.toggleVim
+  ].forEach((button) => {
+    button.disabled = value;
+  });
+  const note = getSelectedNote();
+  elements.duplicateNote.disabled = value || !note;
+  elements.deleteNote.disabled = value || !note;
+  Object.values(fields).forEach((field) => {
+    field.disabled = value || !note;
+  });
+  fields.status.disabled = true;
+  setEditorEnabled(Boolean(note) && !value);
+  elements.list.querySelectorAll("button").forEach((button) => {
     button.disabled = value;
   });
 }
@@ -989,23 +1037,44 @@ function hydrateConfigForm() {
 
 function saveConfig() {
   if (!requireOwnerAccess()) return;
-  state.config = {
+  state.config = normalizeConfig({
     ...state.config,
     apiBase: elements.configApiBase.value.trim()
-  };
+  });
   persistConfig();
   hydrateConfigForm();
   setStatus("发布服务配置已保存");
 }
 
 function persistConfig() {
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(state.config));
+  const persistent = { ...state.config, sessionToken: "" };
+  localStorage.setItem(CONFIG_KEY, JSON.stringify(persistent));
+  try {
+    if (state.config.sessionToken) {
+      sessionStorage.setItem(SESSION_KEY, state.config.sessionToken);
+    } else {
+      sessionStorage.removeItem(SESSION_KEY);
+    }
+  } catch {
+    // The Worker cookie remains available when session storage is blocked.
+  }
 }
 
 function loadConfig() {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
-    return normalizeConfig({ ...DEFAULT_CONFIG, ...(raw ? JSON.parse(raw) : {}) });
+    const stored = raw ? JSON.parse(raw) : {};
+    let sessionToken = String(stored.sessionToken || "");
+    try {
+      sessionToken = sessionStorage.getItem(SESSION_KEY) || sessionToken;
+      if (sessionToken) sessionStorage.setItem(SESSION_KEY, sessionToken);
+    } catch {
+      // Fall back to the HttpOnly Worker cookie.
+    }
+    if (stored.sessionToken) {
+      localStorage.setItem(CONFIG_KEY, JSON.stringify({ ...stored, sessionToken: "" }));
+    }
+    return normalizeConfig({ ...DEFAULT_CONFIG, ...stored, sessionToken });
   } catch {
     return normalizeConfig({ ...DEFAULT_CONFIG });
   }
@@ -1110,17 +1179,32 @@ async function logoutAdmin() {
 async function pullRemote() {
   if (!requireOwnerAccess()) return;
   saveConfig();
+  await syncRemotePosts({ initial: false });
+}
+
+async function syncRemotePosts({ initial = false } = {}) {
+  state.publishPollId += 1;
+  if (state.autosaveTimer || state.dirty) autoSaveWorkspace({ silent: true });
+  const selected = getSelectedNote();
+  const selectedPath = selected?.remotePath || "";
   setBusy(true);
   try {
-    const remote = await apiFetch("/api/notes-data");
-    state.data = normalizeNotesData(remote.data || { notes: [] });
-    state.selectedId = state.data.notes[0]?.id || null;
+    const remote = await apiFetch("/api/posts");
+    const merged = mergeRemotePosts(state.data, remote.data || { notes: [] });
+    state.data = merged.data;
+    state.selectedId = state.data.notes.some((note) => note.id === state.selectedId)
+      ? state.selectedId
+      : state.data.notes.find((note) => selectedPath && note.remotePath === selectedPath)?.id || state.data.notes[0]?.id || null;
     state.dirty = false;
+    state.autosaveStatus = "saved";
     persistWorkspace(false);
-    setStatus(`已拉取笔记库：${remote.path || "notes-data.json"}`);
+    const detail = merged.preserved
+      ? `，保留 ${merged.preserved} 篇本地未发布修改`
+      : "";
+    setStatus(`${initial ? "已同步" : "同步完成"}：${state.data.notes.length} 篇文章${detail}`);
     render();
   } catch (error) {
-    setStatus(`拉取失败：${error.message}`, true);
+    setStatus(`${initial ? "远程文章读取失败" : "同步失败"}：${error.message}`, true);
   } finally {
     setBusy(false);
   }
@@ -1138,44 +1222,78 @@ async function publishRemote() {
   if (!validateSelected()) return;
 
   setBusy(true);
+  const publishedNote = normalizeNote({
+    ...note,
+    status: "published",
+    updatedAt: new Date().toISOString()
+  });
+  publishedNote.status = "published";
+  const submittedFingerprint = noteContentFingerprint(publishedNote);
+  setStatus("正在提交文章...");
+
+  let remote = null;
   try {
-    const publishedNote = normalizeNote({
-      ...note,
-      status: "published",
-      updatedAt: new Date().toISOString()
-    });
-    const remote = await apiFetch("/api/publish", {
+    remote = await apiFetch("/api/publish", {
       method: "POST",
       body: JSON.stringify({ note: publishedNote })
     });
-    Object.assign(note, publishedNote);
-    state.dirty = false;
-    persistWorkspace(false);
-    render();
-    if (remote.publicUrl) {
-      setStatus("已提交发布，正在生成网站...", false, remote.publicUrl);
-      const live = await waitForPublishedPage(remote.publicUrl, publishedNote.title);
-      setStatus(
-        live.ready ? "已上线" : "已提交发布，网站还在生成，稍后刷新就能看到",
-        false,
-        remote.publicUrl
-      );
-    } else {
-      setStatus(`已发布文章：${remote.path || publishedNote.title}`);
-    }
   } catch (error) {
     setStatus(`发布失败：${error.message}`, true);
+    return;
   } finally {
     setBusy(false);
   }
+
+  const current = state.data.notes.find((item) => item.id === publishedNote.id);
+  if (!current) {
+    setStatus("文章已提交，但当前本地页面已不存在，请重新同步", true);
+    return;
+  }
+  const unchanged = noteContentFingerprint(current) === submittedFingerprint;
+  current.status = "published";
+  current.slug = remote.slug || current.slug;
+  current.remotePath = remote.path || current.remotePath;
+  current.remoteSha = remote.sha || current.remoteSha;
+  current.updatedAt = publishedNote.updatedAt;
+  current.localDirty = !unchanged;
+  window.clearTimeout(state.autosaveTimer);
+  state.autosaveTimer = null;
+  state.dirty = current.localDirty;
+  state.autosaveStatus = current.localDirty ? "pending" : "saved";
+  persistWorkspace(false);
+  render();
+
+  if (current.localDirty) scheduleAutosave();
+  if (remote.publicUrl) {
+    const pollId = ++state.publishPollId;
+    setStatus("已提交发布，正在生成网站...", false, remote.publicUrl);
+    const live = await waitForPublishedPage(
+      remote.publicUrl,
+      publishedNote.title,
+      remote.revision || "",
+      pollId
+    );
+    if (pollId !== state.publishPollId) return;
+    setStatus(
+      live.ready ? "已上线" : "已提交发布，网站还在生成，稍后刷新就能看到",
+      false,
+      remote.publicUrl
+    );
+  } else {
+    setStatus(`已发布文章：${remote.path || publishedNote.title}`);
+  }
 }
 
-async function waitForPublishedPage(publicUrl, title) {
+async function waitForPublishedPage(publicUrl, title, revision, pollId) {
   const attempts = 24;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (pollId !== state.publishPollId) return { ready: false, cancelled: true, url: publicUrl };
     await sleep(attempt === 1 ? 2500 : 5000);
+    if (pollId !== state.publishPollId) return { ready: false, cancelled: true, url: publicUrl };
     try {
-      const status = await apiFetch(`/api/publish-status?url=${encodeURIComponent(publicUrl)}&title=${encodeURIComponent(title || "")}`);
+      const status = await apiFetch(
+        `/api/publish-status?url=${encodeURIComponent(publicUrl)}&title=${encodeURIComponent(title || "")}&revision=${encodeURIComponent(revision || "")}`
+      );
       if (status.ready) return status;
       setStatus(`已提交发布，正在生成网站... ${attempt}/${attempts}`, false, publicUrl);
     } catch {

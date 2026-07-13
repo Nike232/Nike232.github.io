@@ -141,7 +141,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="https://tomfng.space/images/redefine-og.webp">
 <meta property="article:published_time" content="2026-07-05T17:10:00.000Z">
-<meta property="article:modified_time" content="2026-07-06T16:26:01.066Z">
+<meta property="article:modified_time" content="2026-07-13T07:48:53.303Z">
 <meta property="article:author" content="Tomfng">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="https://tomfng.space/images/redefine-og.webp">
@@ -806,7 +806,7 @@
 <div class="status-line">
 <span class="status-text" id="status-text">本地工作区</span>
 <div class="sync-actions">
-<button class="ghost-button" id="pull-remote" type="button"><i class="fa-solid fa-rotate"></i><span>拉取笔记</span></button>
+<button class="ghost-button" id="pull-remote" type="button"><i class="fa-solid fa-rotate"></i><span>同步文章</span></button>
 <button class="ghost-button" id="save-local" type="button"><i class="fa-regular fa-floppy-disk"></i><span>本地保存</span></button>
 <button class="solid-button" id="publish-remote" type="button"><i class="fa-solid fa-cloud-arrow-up"></i><span>发布文章</span></button>
 </div>
@@ -836,10 +836,9 @@
 </label>
 <label class="field">
 <span>状态</span>
-<select id="field-status" name="status">
-<option value="published">published</option>
-<option value="draft">draft</option>
-<option value="archived">archived</option>
+<select id="field-status" name="status" aria-label="发布状态">
+<option value="draft">草稿</option>
+<option value="published">已发布</option>
 </select>
 <small class="field-error"></small>
 </label>
@@ -867,7 +866,7 @@
 <details class="preview-panel" aria-label="预览" data-admin-workspace hidden>
 <summary class="preview-head">
 <h2>预览</h2>
-<span class="state-pill state-saved" id="dirty-state">已保存</span>
+<span class="state-pill state-saved" id="dirty-state">已保存到本机</span>
 </summary>
 <p class="preview-summary" id="preview-summary"></p>
 <div class="preview-body">
@@ -1045,7 +1044,7 @@
                 
 
                     
-                        <script data-swup-reload-script src="/note-utils.js?v=20260706-vimfit3"></script>
+                        <script data-swup-reload-script src="/note-utils.js?v=20260713-adminfix1"></script>
                     
         
                 
@@ -1057,7 +1056,7 @@
                 
 
                     
-                        <script data-swup-reload-script src="/admin/admin.js?v=20260707-oneclick"></script>
+                        <script data-swup-reload-script src="/admin/admin.js?v=20260713-adminfix1"></script>
                     
         
         
