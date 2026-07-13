@@ -5,7 +5,7 @@ import { __test } from "../src/index.mjs";
 
 const env = {
   POST_DIR: "source/_posts",
-  SITE_URL: "https://tomfng.space",
+  SITE_URL: "http://tomfng.space",
   TIME_ZONE: "Asia/Shanghai"
 };
 
@@ -49,7 +49,7 @@ test("publication checks use the resolved slug", () => {
     createdAt: "2026-07-13T02:00:00.000Z"
   }, env, "same-title-2");
 
-  assert.equal(url, "https://tomfng.space/2026/07/13/same-title-2/");
+  assert.equal(url, "http://tomfng.space/2026/07/13/same-title-2/");
 });
 
 test("post paths cannot escape the configured article directory", () => {

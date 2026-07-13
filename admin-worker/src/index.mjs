@@ -403,7 +403,7 @@ function publicPostUrl(note, env, slugOverride = "") {
 }
 
 function siteBaseUrl(env) {
-  return String(env.SITE_URL || "https://tomfng.space").trim().replace(/\/+$/g, "") || "https://tomfng.space";
+  return String(env.SITE_URL || "http://tomfng.space").trim().replace(/\/+$/g, "") || "http://tomfng.space";
 }
 
 function buildHexoPost(note, env, revision = randomRevision()) {
@@ -623,7 +623,7 @@ function requireAllowedOrigin(request, env) {
 }
 
 function allowedOrigins(env) {
-  return String(env.ALLOWED_ORIGINS || "https://tomfng.space,http://localhost:4001,http://[::1]:4001")
+  return String(env.ALLOWED_ORIGINS || "https://tomfng.space,http://tomfng.space,http://localhost:4001,http://[::1]:4001")
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
