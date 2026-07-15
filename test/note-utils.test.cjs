@@ -17,21 +17,38 @@ const {
   createHtmlToMarkdown,
   editMarkdownTable,
   extractMarkdownHeadings,
+  filterNotesByListStatus,
   filterNotesByQuery,
+  filterNotesByTag,
   findMarkdownImageAt,
   findMarkdownLinkAt,
   formatMarkdownImage,
+  formatMarkdownImageSize,
   formatMarkdownLink,
   getMarkdownTableContext,
+  getNoteListStatus,
   markdownBlockTemplate,
+  markdownEmptyBlockEnterEdit,
+  findMarkdownFootnoteDefinition,
   markdownFootnoteTemplate,
+  markdownListBackspaceEdit,
+  markdownListJoinBackspaceEdit,
+  markdownPairBackspaceEdit,
+  markdownPairInputEdit,
+  markdownSoftBreakInsert,
+  markdownTableKeyboardEdit,
   markdownToHtml,
+  lineHasGfmHardBreak,
+  parseMarkdownImageSize,
+  renumberMarkdownOrderedList,
   mergeRemotePosts,
   normalizeEditorViewState,
   normalizeMarkdownImageUrl,
   normalizeMarkdownLinkUrl,
   normalizeNote,
   parseMarkdownSlashContext,
+  selectVisibleNotes,
+  sortNotes,
   toggleMarkdownTask,
   transformMarkdownBlockLines
 } = window.TomfngNoteTools;
@@ -382,6 +399,280 @@ test("inline links can be found, normalized, and rewritten in place", () => {
   );
 });
 
+test("Markdown delimiters pair, promote, skip, and delete like a native editor", () => {
+  assert.deepEqual(markdownPairInputEdit("正文", 2, 2, "`"), {
+    type: "replace",
+    from: 2,
+    to: 2,
+    text: "``",
+    selectionStart: 1,
+    selectionEnd: 1
+  });
+  assert.deepEqual(markdownPairInputEdit("$x$", 2, 2, "$"), {
+    type: "skip",
+    cursor: 3
+  });
+  assert.deepEqual(markdownPairInputEdit("$$", 1, 1, "$"), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "$$\n\n$$",
+    selectionStart: 3,
+    selectionEnd: 3
+  });
+  assert.deepEqual(markdownPairInputEdit("``", 2, 2, "`"), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "```\n\n```",
+    selectionStart: 4,
+    selectionEnd: 4
+  });
+  assert.equal(markdownPairInputEdit("", 0, 0, "`"), null);
+
+  assert.deepEqual(markdownPairInputEdit("强调", 0, 2, "*"), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "*强调*",
+    selectionStart: 1,
+    selectionEnd: 3
+  });
+  assert.equal(markdownPairInputEdit("*完成*", 4, 4, "*"), null);
+  assert.deepEqual(markdownPairInputEdit("*", 1, 1, "*"), {
+    type: "replace",
+    from: 1,
+    to: 1,
+    text: "***",
+    selectionStart: 1,
+    selectionEnd: 1
+  });
+  assert.deepEqual(markdownPairInputEdit("删除", 0, 2, "~"), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "~~删除~~",
+    selectionStart: 2,
+    selectionEnd: 4
+  });
+
+  assert.deepEqual(markdownPairBackspaceEdit("**", 1), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  });
+  assert.deepEqual(markdownPairBackspaceEdit("****", 2), {
+    type: "replace",
+    from: 0,
+    to: 4,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  });
+  assert.equal(markdownPairBackspaceEdit("*内容*", 2), null);
+});
+
+test("list, task, quote, and heading backspace unindents like Typora", () => {
+  assert.deepEqual(markdownListBackspaceEdit("- item", 2), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  });
+  assert.deepEqual(markdownListBackspaceEdit("  - item", 4), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "",
+    selectionStart: 2,
+    selectionEnd: 2
+  });
+  assert.deepEqual(markdownListBackspaceEdit("- [ ] task", 6), {
+    type: "replace",
+    from: 0,
+    to: 6,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  });
+  assert.deepEqual(markdownListBackspaceEdit("1. ordered", 3), {
+    type: "replace",
+    from: 0,
+    to: 3,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  });
+  assert.deepEqual(markdownListBackspaceEdit("> quote", 2), {
+    type: "replace",
+    from: 0,
+    to: 2,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  });
+  assert.deepEqual(markdownListBackspaceEdit("## heading", 3), {
+    type: "replace",
+    from: 0,
+    to: 3,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  });
+  assert.equal(markdownListBackspaceEdit("- item", 4), null);
+  assert.equal(markdownListBackspaceEdit("plain", 0), null);
+
+  assert.deepEqual(markdownListJoinBackspaceEdit("1. alpha", "2. beta"), {
+    type: "replace",
+    previousText: "1. alphabeta",
+    selectionStart: "1. alpha".length,
+    selectionEnd: "1. alpha".length
+  });
+  assert.deepEqual(markdownListJoinBackspaceEdit("paragraph", "- item"), {
+    type: "replace",
+    previousText: "paragraphitem",
+    selectionStart: "paragraph".length,
+    selectionEnd: "paragraph".length
+  });
+  assert.equal(markdownListJoinBackspaceEdit("keep", "plain line"), null);
+});
+
+test("code block template places cursor on the language slot", () => {
+  const empty = markdownBlockTemplate("code-block");
+  assert.equal(empty.body, "```\n\n```");
+  assert.equal(empty.selectionStart, 3);
+  assert.equal(empty.selectionEnd, 3);
+
+  const selected = markdownBlockTemplate("code-block", "const x = 1;");
+  assert.equal(selected.body, "```\nconst x = 1;\n```");
+  assert.equal(selected.selectionStart, 4);
+  assert.equal(selected.selectionEnd, 4 + "const x = 1;".length);
+});
+
+test("image size titleSuffix parses and formats like Typora", () => {
+  assert.deepEqual(parseMarkdownImageSize(" =420"), { width: 420, restTitleSuffix: "" });
+  assert.deepEqual(parseMarkdownImageSize(" =320x180"), { width: 320, restTitleSuffix: "" });
+  assert.deepEqual(parseMarkdownImageSize(' "cover"'), { width: null, restTitleSuffix: ' "cover"' });
+  assert.equal(formatMarkdownImageSize("", 480), " =480");
+  assert.equal(
+    formatMarkdownImage("示意图", "/images/a.png", formatMarkdownImageSize("", 360)),
+    "![示意图](/images/a.png =360)"
+  );
+});
+
+test("Shift-Enter soft break inserts GFM trailing spaces", () => {
+  assert.deepEqual(markdownSoftBreakInsert("hello", 5), {
+    from: 5,
+    to: 5,
+    text: "  \n",
+    cursor: 0
+  });
+  assert.deepEqual(markdownSoftBreakInsert("hello  ", 7), {
+    from: 7,
+    to: 7,
+    text: "\n",
+    cursor: 0
+  });
+  assert.equal(lineHasGfmHardBreak("line  "), true);
+  assert.equal(lineHasGfmHardBreak("line"), false);
+});
+
+test("footnote definitions can be located by label", () => {
+  const lines = [
+    "See note[^1] and also[^note].",
+    "",
+    "[^1]: first",
+    "[^note]: second definition"
+  ];
+  assert.deepEqual(findMarkdownFootnoteDefinition(lines, "1"), { line: 2, ch: 5 });
+  assert.deepEqual(findMarkdownFootnoteDefinition(lines, "note"), { line: 3, ch: 8 });
+  assert.equal(findMarkdownFootnoteDefinition(lines, "missing"), null);
+});
+
+test("empty heading Enter clears the heading marker", () => {
+  assert.deepEqual(markdownEmptyBlockEnterEdit("##"), {
+    text: "",
+    cursor: 0
+  });
+  assert.deepEqual(markdownEmptyBlockEnterEdit("  #  "), {
+    text: "  ",
+    cursor: 2
+  });
+  assert.equal(markdownEmptyBlockEnterEdit("## still text"), null);
+});
+
+test("ordered lists renumber after structural edits", () => {
+  const lines = [
+    "1. alpha",
+    "3. beta",
+    "4. gamma"
+  ];
+  const result = renumberMarkdownOrderedList(lines, 1);
+  assert.deepEqual(result, {
+    fromLine: 0,
+    toLine: 2,
+    lines: [
+      "1. alpha",
+      "2. beta",
+      "3. gamma"
+    ]
+  });
+
+  const split = [
+    "1. alpha",
+    "2. beta",
+    "plain",
+    "4. gamma",
+    "5. delta"
+  ];
+  assert.deepEqual(renumberMarkdownOrderedList(split, 3), {
+    fromLine: 3,
+    toLine: 4,
+    lines: [
+      "1. gamma",
+      "2. delta"
+    ]
+  });
+  assert.equal(renumberMarkdownOrderedList(["- bullet", "1. only"], 0), null);
+});
+
+test("table keyboard navigation moves across cells and can insert rows", () => {
+  const lines = [
+    "| 名称 | 值 |",
+    "| --- | --- |",
+    "| a | b |",
+    "| c | d |"
+  ];
+
+  const next = markdownTableKeyboardEdit(lines, { line: 2, ch: 2 }, "next");
+  assert.equal(next.lines, null);
+  assert.deepEqual(next.selection, {
+    from: { line: 2, ch: 6 },
+    to: { line: 2, ch: 7 }
+  });
+
+  const down = markdownTableKeyboardEdit(lines, { line: 2, ch: 2 }, "enter");
+  assert.equal(down.lines, null);
+  assert.equal(down.selection.from.line, 3);
+  assert.equal(down.selection.from.ch, 2);
+
+  const skipSep = markdownTableKeyboardEdit(lines, { line: 1, ch: 2 }, "down");
+  assert.equal(skipSep.selection.from.line, 2);
+
+  const create = markdownTableKeyboardEdit(lines, { line: 3, ch: 6 }, "next");
+  assert.ok(create.lines);
+  assert.equal(create.lines.length, 5);
+  assert.equal(create.selection.from.line, 4);
+  // Empty cells from renderRow land the caret after "| " padding.
+  assert.equal(create.selection.from.ch, 3);
+  assert.equal(create.selection.to.ch, 3);
+});
+
 test("table editing identifies cells and preserves escaped or inline-code pipes", () => {
   const lines = [
     "| 名称 | 值 |",
@@ -439,10 +730,78 @@ test("table editing adds and removes columns, rows, and alignment", () => {
   assert.equal(editMarkdownTable(deletedColumn.lines, { line: 2, ch: 3 }, "delete-column"), null);
 });
 
+test("note list management filters, sorts, and composes visibility", () => {
+  const notes = [
+    normalizeNote({
+      id: "d1",
+      title: "草稿甲",
+      category: "写作",
+      tags: ["idea"],
+      status: "draft",
+      content: "本地草稿",
+      createdAt: "2026-07-01T00:00:00.000Z",
+      updatedAt: "2026-07-10T00:00:00.000Z",
+      remotePath: "",
+      localDirty: true
+    }),
+    normalizeNote({
+      id: "p1",
+      title: "已发乙",
+      category: "工程",
+      tags: ["shipping", "idea"],
+      status: "published",
+      content: "线上正文",
+      createdAt: "2026-07-02T00:00:00.000Z",
+      updatedAt: "2026-07-08T00:00:00.000Z",
+      remotePath: "source/_posts/p1.md",
+      remoteSha: "abc",
+      localDirty: false
+    }),
+    normalizeNote({
+      id: "x1",
+      title: "有改丙",
+      category: "工程",
+      tags: ["shipping"],
+      status: "published",
+      content: "本地改过",
+      createdAt: "2026-07-03T00:00:00.000Z",
+      updatedAt: "2026-07-12T00:00:00.000Z",
+      remotePath: "source/_posts/x1.md",
+      remoteSha: "def",
+      localDirty: true
+    })
+  ];
+
+  assert.equal(getNoteListStatus(notes[0]), "draft");
+  assert.equal(getNoteListStatus(notes[1]), "published");
+  assert.equal(getNoteListStatus(notes[2]), "dirty");
+  assert.deepEqual(filterNotesByListStatus(notes, "dirty").map((n) => n.id), ["x1"]);
+  assert.deepEqual(filterNotesByTag(notes, "idea").map((n) => n.id), ["d1", "p1"]);
+  assert.deepEqual(sortNotes(notes, "title").map((n) => n.id), ["d1", "p1", "x1"]);
+  assert.deepEqual(sortNotes(notes, "created").map((n) => n.id), ["x1", "p1", "d1"]);
+  assert.deepEqual(
+    selectVisibleNotes(notes, {
+      category: "工程",
+      statusFilter: "dirty",
+      tag: "shipping",
+      query: "改",
+      sortBy: "updated"
+    }).map((n) => n.id),
+    ["x1"]
+  );
+  assert.deepEqual(
+    selectVisibleNotes(notes, { statusFilter: "published", sortBy: "updated" }).map((n) => n.id),
+    ["p1"]
+  );
+});
+
 test("editor view state keeps safe bounded document positions", () => {
   const view = normalizeEditorViewState({
     selectedId: "note-b",
     category: "写作",
+    statusFilter: "dirty",
+    sortBy: "title",
+    tag: "idea",
     sidebarMode: "outline",
     notes: {
       "note-a": { cursor: { line: 8.9, ch: -4 }, scrollTop: 280.5, scrollLeft: "12", pageScrollY: "640" },
@@ -454,7 +813,12 @@ test("editor view state keeps safe bounded document positions", () => {
 
   assert.equal(view.selectedId, "note-b");
   assert.equal(view.category, "写作");
+  assert.equal(view.statusFilter, "dirty");
+  assert.equal(view.sortBy, "title");
+  assert.equal(view.tag, "idea");
   assert.equal(view.sidebarMode, "outline");
+  assert.equal(normalizeEditorViewState({ statusFilter: "nope", sortBy: "wat" }).statusFilter, "all");
+  assert.equal(normalizeEditorViewState({ statusFilter: "nope", sortBy: "wat" }).sortBy, "updated");
   assert.deepEqual(view.notes["note-a"], {
     cursor: { line: 8, ch: 0 },
     scrollTop: 280.5,

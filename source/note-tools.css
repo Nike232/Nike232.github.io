@@ -1553,6 +1553,25 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   text-shadow: none !important;
 }
 
+/* Typora-like: reveal raw markers on the active line so they can be edited. */
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-header,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-em,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-strong,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-strikethrough,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-code,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-link,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-image,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-quote,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.cm-formatting-list,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline span.hmd-hidden-token {
+  color: #b8b6b0 !important;
+  font-family: var(--note-mono) !important;
+  font-size: 0.78em !important;
+  letter-spacing: 0 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+}
+
 .editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-header,
 .editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-em,
 .editor-field .cm-s-hypermd-light pre.hmd-inactive-line span.cm-formatting-strong,
@@ -1632,6 +1651,7 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   line-height: 1.25;
   text-decoration: none;
   vertical-align: super;
+  cursor: pointer;
 }
 
 .editor-field .cm-s-hypermd-light:not(.note-source-mode) span.cm-formatting.cm-hmd-footref {
@@ -2085,6 +2105,25 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   text-align: center;
 }
 
+/* Active list line: show raw Markdown markers instead of the pretty bullet. */
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline.HyperMD-list-line span.cm-formatting-list,
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline.HyperMD-list-line span.cm-formatting-list-ul {
+  position: static;
+  float: none;
+  width: auto;
+  margin-left: 0;
+  color: #b8b6b0 !important;
+  font-family: var(--note-mono) !important;
+  font-size: 0.78em !important;
+  letter-spacing: 0 !important;
+  opacity: 1 !important;
+  text-align: left;
+}
+
+.editor-field .cm-s-hypermd-light .CodeMirror-activeline.HyperMD-list-line span.cm-formatting-list-ul::after {
+  content: none;
+}
+
 .editor-field .cm-s-hypermd-light span.cm-formatting-task {
   color: var(--note-muted);
 }
@@ -2167,18 +2206,66 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   background: rgba(191, 184, 166, 0.34) !important;
 }
 
+.editor-field .cm-s-hypermd-light .hmd-image-resize-host {
+  position: relative;
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  margin: 12px 0 18px;
+}
+
+.editor-field .cm-s-hypermd-light .hmd-image-resize-host.is-resizing {
+  user-select: none;
+}
+
+.editor-field .cm-s-hypermd-light .hmd-image-resize-handle {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ffffff;
+  border-radius: 3px;
+  background: rgba(55, 53, 47, 0.72);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.editor-field .cm-s-hypermd-light .hmd-image-resize-host:hover .hmd-image-resize-handle,
+.editor-field .cm-s-hypermd-light .hmd-image-resize-host.is-resizing .hmd-image-resize-handle {
+  opacity: 1;
+}
+
+.editor-field .cm-s-hypermd-light .cm-gfm-hardbreak {
+  display: inline-block;
+  margin-left: 2px;
+  color: #b0ada6;
+  font-size: 0.78em;
+  line-height: 1;
+  vertical-align: baseline;
+  pointer-events: none;
+  user-select: none;
+}
+
+.editor-field .cm-s-hypermd-light .cm-gfm-hardbreak::after {
+  content: "↵";
+  opacity: 0.72;
+}
+
 .editor-field .cm-s-hypermd-light img.hmd-image {
   display: block;
   width: auto;
   max-width: 100%;
   max-height: min(68vh, 720px);
   height: auto;
-  margin: 12px 0 18px;
+  margin: 0;
   border: 1px solid rgba(55, 53, 47, 0.08);
   border-radius: 6px;
   background: #f7f7f5;
   box-shadow: 0 8px 24px rgba(47, 45, 41, 0.06);
-  cursor: text;
+  cursor: default;
   object-fit: contain;
 }
 
@@ -2428,13 +2515,99 @@ body:has(.notes-admin.is-focus-writing) .main-content-body {
   gap: 6px;
 }
 
+.admin-filter-stack {
+  display: grid;
+  gap: 0;
+  border-bottom: 1px solid var(--note-line);
+}
+
+.admin-filter-stack .category-strip,
+.admin-filter-stack .tag-strip {
+  border-bottom: 0;
+}
+
 .category-strip {
   padding: 10px 14px 8px;
   border-bottom: 1px solid var(--note-line);
 }
 
+.admin-filter-stack .category-strip {
+  padding: 8px 14px 4px;
+}
+
+.admin-sort-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 8px;
+  color: var(--note-muted);
+  font-size: 12px;
+}
+
+.admin-sort-field select {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--note-line);
+  border-radius: 4px;
+  color: var(--note-text);
+  background: #fff;
+  font: inherit;
+}
+
 .tag-strip {
   padding: 0 14px 12px;
+}
+
+.admin-filter-stack .tag-strip {
+  padding: 0 14px 10px;
+}
+
+.admin-batch-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--note-line);
+  background: #f7f6f3;
+}
+
+.admin-batch-count {
+  margin-right: 4px;
+  color: var(--note-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.note-row.is-batch {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  text-align: left;
+}
+
+.note-row-check {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--note-muted);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.note-row-body {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 4px;
+}
+
+.note-row.is-checked {
+  background: rgba(55, 53, 47, 0.06);
+  box-shadow: inset 3px 0 0 #37352f;
+}
+
+.notes-admin.is-batch-mode .note-row.is-active:not(.is-checked) {
+  box-shadow: none;
 }
 
 .category-filter,
@@ -3317,6 +3490,14 @@ pre.tomfng-mermaid.is-mermaid-error small {
   min-height: 0;
   color: var(--note-red);
   font-size: 0.76rem;
+}
+
+.field-hint {
+  grid-column: 2;
+  min-height: 0;
+  color: var(--note-muted);
+  font-size: 0.76rem;
+  line-height: 1.4;
 }
 
 .field-wide {

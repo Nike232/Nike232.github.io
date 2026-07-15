@@ -198,8 +198,18 @@ function renderFullMarkdown(markdown) {
   renderer.image = ({ href, title, text }) => {
     const url = safeRenderedUrl(href, true);
     if (!url) return escapeHtml(text || "");
-    const titleAttribute = title ? ` title="${escapeHtml(title)}"` : "";
-    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(text || "")}" loading="lazy" decoding="async"${titleAttribute}>`;
+    const size = parseMarkdownImageSize(title ? ` ${title}` : "");
+    // marked may pass title without leading space; also accept raw "=420".
+    const sized = size.width
+      ? size
+      : parseMarkdownImageSize(title || "");
+    const titleAttribute = sized.width
+      ? ""
+      : (title ? ` title="${escapeHtml(title)}"` : "");
+    const widthAttribute = sized.width
+      ? ` width="${sized.width}" style="width:${sized.width}px;max-width:100%;height:auto"`
+      : "";
+    return `<img src="${escapeHtml(url)}" alt="${escapeHtml(text || "")}" loading="lazy" decoding="async"${titleAttribute}${widthAttribute}>`;
   };
   const defaultCodeRenderer = renderer.code;
   renderer.code = function renderCode(token) {
@@ -517,6 +527,271 @@ function formatMarkdownImage(alt, url, titleSuffix = "") {
   return `![${escapeMarkdownInlineLabel(alt)}](${destination}${String(titleSuffix || "")})`;
 }
 
+function parseMarkdownImageSize(titleSuffix = "") {
+  const raw = String(titleSuffix || "");
+  // Canonical Typora-ish: " =420" or " =420x240" (optionally quoted).
+  const sizeMatch = /^\s*=\s*(\d{2,4})(?:x\d{0,4})?\s*$/.exec(raw)
+    || /^\s*"=\s*(\d{2,4})(?:x\d{0,4})?"\s*$/.exec(raw)
+    || /^\s*"w=(\d{2,4})"\s*$/i.exec(raw)
+    || /^=\s*(\d{2,4})(?:x\d{0,4})?$/.exec(raw.trim());
+  if (!sizeMatch) {
+    return { width: null, restTitleSuffix: raw };
+  }
+  const width = Math.max(40, Math.min(2400, Number(sizeMatch[1]) || 0));
+  if (!width) return { width: null, restTitleSuffix: raw };
+  return { width, restTitleSuffix: "" };
+}
+
+function formatMarkdownImageSize(titleSuffix = "", width) {
+  const size = Math.round(Number(width) || 0);
+  if (!Number.isFinite(size) || size < 40) {
+    const parsed = parseMarkdownImageSize(titleSuffix);
+    return parsed.restTitleSuffix;
+  }
+  const clamped = Math.max(80, Math.min(1600, size));
+  const parsed = parseMarkdownImageSize(titleSuffix);
+  const rest = String(parsed.restTitleSuffix || "").trim();
+  if (rest && !/^=/.test(rest)) {
+    // Keep a human title and append size only if rest looks like a quoted title.
+    if (/^".*"$/.test(rest) || /^'.*'$/.test(rest)) {
+      return ` ${rest} =${clamped}`;
+    }
+  }
+  return ` =${clamped}`;
+}
+
+function markdownSoftBreakInsert(line, ch) {
+  const value = String(line || "");
+  const cursor = Math.max(0, Math.min(value.length, Math.floor(Number(ch) || 0)));
+  const before = value.slice(0, cursor);
+  const after = value.slice(cursor);
+  // Already a GFM hard break at the insert point.
+  if (/ {2}$/.test(before) || /\\$/.test(before)) {
+    return {
+      from: cursor,
+      to: cursor,
+      text: "\n",
+      cursor: 0
+    };
+  }
+  return {
+    from: cursor,
+    to: cursor,
+    text: "  \n",
+    cursor: 0
+  };
+}
+
+function lineHasGfmHardBreak(line) {
+  return / {2}$/.test(String(line || "")) || /\\$/.test(String(line || ""));
+}
+
+function markdownPairInputEdit(line, fromCh, toCh, key) {
+  const value = String(line || "");
+  const from = Math.max(0, Math.min(value.length, Math.floor(Number(fromCh) || 0)));
+  const to = Math.max(from, Math.min(value.length, Math.floor(Number(toCh) || 0)));
+  const marker = String(key || "");
+  if (!["*", "_", "~", "`", "$"].includes(marker)) return null;
+
+  const selected = value.slice(from, to);
+  if (selected) {
+    const pair = marker === "~" ? "~~" : marker;
+    return {
+      type: "replace",
+      from,
+      to,
+      text: `${pair}${selected}${pair}`,
+      selectionStart: pair.length,
+      selectionEnd: pair.length + selected.length
+    };
+  }
+
+  const before = value.slice(0, from);
+  const after = value.slice(to);
+  if (marker === "$" && before === "$" && after === "$") {
+    return {
+      type: "replace",
+      from: 0,
+      to: value.length,
+      text: "$$\n\n$$",
+      selectionStart: 3,
+      selectionEnd: 3
+    };
+  }
+  if (marker === "`" && /^\s*`{0,2}$/.test(before) && !after.trim()) {
+    if (before.endsWith("``")) {
+      return {
+        type: "replace",
+        from: 0,
+        to: value.length,
+        text: "```\n\n```",
+        selectionStart: 4,
+        selectionEnd: 4
+      };
+    }
+    return null;
+  }
+  if (after.startsWith(marker)) {
+    return { type: "skip", cursor: from + marker.length };
+  }
+  if (marker === "`" || marker === "$") {
+    return {
+      type: "replace",
+      from,
+      to,
+      text: marker + marker,
+      selectionStart: marker.length,
+      selectionEnd: marker.length
+    };
+  }
+
+  if (
+    before.endsWith(marker)
+    && !isEscapedMarkdownCharacter(value, from - 1)
+    && countUnescapedMarkdownMarker(before, marker) % 2 === 1
+  ) {
+    return {
+      type: "replace",
+      from,
+      to,
+      text: marker.repeat(3),
+      selectionStart: marker.length,
+      selectionEnd: marker.length
+    };
+  }
+  return null;
+}
+
+function markdownPairBackspaceEdit(line, ch) {
+  const value = String(line || "");
+  const cursor = Math.max(0, Math.min(value.length, Math.floor(Number(ch) || 0)));
+  const marker = value[cursor - 1];
+  if (!["*", "_", "~", "`", "$"].includes(marker) || value[cursor] !== marker) return null;
+  const doubled = value.slice(cursor - 2, cursor) === marker.repeat(2)
+    && value.slice(cursor, cursor + 2) === marker.repeat(2);
+  const width = doubled ? 2 : 1;
+  return {
+    type: "replace",
+    from: cursor - width,
+    to: cursor + width,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  };
+}
+
+function countUnescapedMarkdownMarker(value, marker) {
+  let count = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] === marker && !isEscapedMarkdownCharacter(value, index)) count += 1;
+  }
+  return count;
+}
+
+function markdownListBackspaceEdit(line, ch) {
+  const value = String(line || "");
+  const cursor = Math.max(0, Math.min(value.length, Math.floor(Number(ch) || 0)));
+  const match = /^([ \t]*)(#{1,6}[ \t]+|>[ \t]+|(?:[-+*]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)/.exec(value);
+  if (!match) return null;
+
+  const indent = match[1];
+  const marker = match[2];
+  const prefixEnd = indent.length + marker.length;
+  if (cursor !== prefixEnd) return null;
+
+  if (indent.length > 0) {
+    let remove = 0;
+    if (indent.endsWith("\t")) remove = 1;
+    else if (indent.endsWith("  ")) remove = 2;
+    else if (indent.endsWith(" ")) remove = 1;
+    else return null;
+    const nextIndent = indent.slice(0, -remove);
+    return {
+      type: "replace",
+      from: 0,
+      to: indent.length,
+      text: nextIndent,
+      selectionStart: nextIndent.length + marker.length,
+      selectionEnd: nextIndent.length + marker.length
+    };
+  }
+
+  return {
+    type: "replace",
+    from: 0,
+    to: prefixEnd,
+    text: "",
+    selectionStart: 0,
+    selectionEnd: 0
+  };
+}
+
+function markdownEmptyBlockEnterEdit(line) {
+  const value = String(line || "");
+  const heading = /^([ \t]*)(#{1,6})[ \t]*$/.exec(value);
+  if (!heading) return null;
+  return {
+    text: heading[1],
+    cursor: heading[1].length
+  };
+}
+
+function markdownListJoinBackspaceEdit(prevLine, line) {
+  const previous = String(prevLine || "");
+  const current = String(line || "");
+  const marker = /^([ \t]*)(#{1,6}[ \t]+|>[ \t]+|(?:[-+*]|\d+[.)])[ \t]+(?:\[[ xX]\][ \t]+)?)/;
+  const currentMatch = marker.exec(current);
+  // Join only when the current line is a structural block item (including empty ones).
+  // Plain paragraphs at ch=0 keep default CodeMirror join behavior.
+  if (!currentMatch) return null;
+  const content = current.slice(currentMatch[0].length);
+  return {
+    type: "replace",
+    previousText: previous + content,
+    selectionStart: previous.length,
+    selectionEnd: previous.length
+  };
+}
+
+function renumberMarkdownOrderedList(lines, pivotLine = 0) {
+  const values = Array.from(lines || [], (line) => String(line || ""));
+  if (!values.length) return null;
+  const ordered = /^([ \t]*)(\d+)([.)])([ \t]+)(.*)$/;
+  let probe = Math.max(0, Math.min(values.length - 1, Math.floor(Number(pivotLine) || 0)));
+  if (!ordered.test(values[probe])) {
+    if (probe > 0 && ordered.test(values[probe - 1])) probe -= 1;
+    else if (probe + 1 < values.length && ordered.test(values[probe + 1])) probe += 1;
+    else return null;
+  }
+
+  const seed = ordered.exec(values[probe]);
+  if (!seed) return null;
+  const indent = seed[1];
+  let fromLine = probe;
+  let toLine = probe;
+  while (fromLine > 0) {
+    const match = ordered.exec(values[fromLine - 1]);
+    if (!match || match[1] !== indent) break;
+    fromLine -= 1;
+  }
+  while (toLine + 1 < values.length) {
+    const match = ordered.exec(values[toLine + 1]);
+    if (!match || match[1] !== indent) break;
+    toLine += 1;
+  }
+
+  let changed = false;
+  const nextLines = [];
+  for (let index = fromLine, number = 1; index <= toLine; index += 1, number += 1) {
+    const match = ordered.exec(values[index]);
+    const rewritten = `${match[1]}${number}${match[3]}${match[4]}${match[5]}`;
+    if (rewritten !== values[index]) changed = true;
+    nextLines.push(rewritten);
+  }
+  if (!changed) return null;
+  return { fromLine, toLine, lines: nextLines };
+}
+
 function htmlTableToMarkdown(table) {
   const rows = Array.from(table.rows || []);
   if (!rows.length) return "";
@@ -674,6 +949,108 @@ function getMarkdownTableContext(lines, cursor = {}) {
   };
 }
 
+function markdownTableDataLines(table) {
+  const lines = [table.fromLine];
+  for (let line = table.separatorLine + 1; line <= table.toLine; line += 1) lines.push(line);
+  return lines;
+}
+
+function markdownTableCellSelection(lineText, column) {
+  const cells = markdownTableCells(lineText).cells;
+  if (!cells.length) return null;
+  const cell = cells[Math.max(0, Math.min(column, cells.length - 1))];
+  return {
+    from: cell.contentFrom,
+    to: cell.text ? cell.contentTo : cell.contentFrom
+  };
+}
+
+function markdownTableKeyboardEdit(lines, cursor = {}, action = "next") {
+  const table = findMarkdownTable(lines, cursor);
+  if (!table) return null;
+  const dir = String(action || "next");
+  if (!["next", "prev", "up", "down", "enter"].includes(dir)) return null;
+
+  const dataLines = markdownTableDataLines(table);
+  let line = table.cursorLine;
+  let column = table.column;
+  let snappedFromSeparator = false;
+
+  if (line === table.separatorLine) {
+    snappedFromSeparator = true;
+    // Separator is visually collapsed — land on the nearest real row first.
+    if (dir === "up" || dir === "prev") line = table.fromLine;
+    else line = dataLines[Math.min(1, dataLines.length - 1)] ?? table.fromLine;
+  }
+
+  let rowIndex = dataLines.indexOf(line);
+  if (rowIndex < 0) return null;
+  let createRow = false;
+
+  if (snappedFromSeparator && (dir === "up" || dir === "down" || dir === "enter")) {
+    // Already snapped to the destination row for vertical moves.
+  } else if (dir === "next") {
+    if (column < table.columnCount - 1) column += 1;
+    else if (rowIndex < dataLines.length - 1) {
+      rowIndex += 1;
+      column = 0;
+    } else {
+      createRow = true;
+      column = 0;
+    }
+  } else if (dir === "prev") {
+    if (column > 0) column -= 1;
+    else if (rowIndex > 0) {
+      rowIndex -= 1;
+      column = table.columnCount - 1;
+    } else {
+      return null;
+    }
+  } else if (dir === "enter" || dir === "down") {
+    if (rowIndex < dataLines.length - 1) rowIndex += 1;
+    else if (dir === "enter") createRow = true;
+    else return null;
+  } else if (dir === "up") {
+    if (rowIndex > 0) rowIndex -= 1;
+    else return null;
+  }
+
+  if (createRow) {
+    const edited = editMarkdownTable(lines, {
+      line: table.toLine,
+      ch: Math.max(0, Math.floor(Number(cursor.ch) || 0))
+    }, "add-row");
+    if (!edited) return null;
+    const relativeLine = edited.lines.length - 1;
+    const targetLine = edited.fromLine + relativeLine;
+    const targetColumn = dir === "enter" ? table.column : 0;
+    const selection = markdownTableCellSelection(edited.lines[relativeLine], targetColumn);
+    if (!selection) return null;
+    return {
+      fromLine: edited.fromLine,
+      toLine: edited.toLine,
+      lines: edited.lines,
+      selection: {
+        from: { line: targetLine, ch: selection.from },
+        to: { line: targetLine, ch: selection.to }
+      }
+    };
+  }
+
+  const targetLine = dataLines[rowIndex];
+  const selection = markdownTableCellSelection(String(lines[targetLine] || ""), column);
+  if (!selection) return null;
+  return {
+    fromLine: table.fromLine,
+    toLine: table.toLine,
+    lines: null,
+    selection: {
+      from: { line: targetLine, ch: selection.from },
+      to: { line: targetLine, ch: selection.to }
+    }
+  };
+}
+
 function editMarkdownTable(lines, cursor, action, value = "") {
   const table = findMarkdownTable(lines, cursor);
   if (!table) return null;
@@ -803,13 +1180,72 @@ function normalizeEditorViewState(value) {
   });
 
   const rawCategory = String(source.category || "all").trim();
+  const rawStatus = String(source.statusFilter || "all").trim().toLowerCase();
+  const statusFilter = ["all", "draft", "published", "dirty"].includes(rawStatus) ? rawStatus : "all";
+  const rawSort = String(source.sortBy || "updated").trim().toLowerCase();
+  const sortBy = ["updated", "created", "title"].includes(rawSort) ? rawSort : "updated";
+  const rawTag = String(source.tag || "all").trim();
+  const tag = !rawTag || rawTag === "all" ? "all" : rawTag;
   return {
     version: 1,
     selectedId: String(source.selectedId || ""),
     category: rawCategory === "all" ? "all" : normalizeCategory(rawCategory),
+    statusFilter,
+    sortBy,
+    tag,
     sidebarMode: source.sidebarMode === "outline" ? "outline" : "pages",
     notes
   };
+}
+
+function getNoteListStatus(note = {}) {
+  if (!note?.remotePath) return "draft";
+  return note.localDirty ? "dirty" : "published";
+}
+
+function filterNotesByListStatus(notes, statusFilter = "all") {
+  const values = Array.from(notes || []);
+  const filter = String(statusFilter || "all");
+  if (filter === "all") return values;
+  if (!["draft", "published", "dirty"].includes(filter)) return values;
+  return values.filter((note) => getNoteListStatus(note) === filter);
+}
+
+function filterNotesByTag(notes, tag = "all") {
+  const values = Array.from(notes || []);
+  const target = String(tag || "all").trim();
+  if (!target || target === "all") return values;
+  return values.filter((note) => normalizeTags(note?.tags).includes(target));
+}
+
+function sortNotes(notes, sortBy = "updated") {
+  const values = Array.from(notes || []);
+  const mode = String(sortBy || "updated");
+  const ranked = values.map((note, index) => ({ note, index }));
+  ranked.sort((a, b) => {
+    if (mode === "title") {
+      const cmp = String(a.note?.title || "").localeCompare(String(b.note?.title || ""), "zh-CN");
+      return cmp || a.index - b.index;
+    }
+    const key = mode === "created" ? "createdAt" : "updatedAt";
+    const left = new Date(a.note?.[key] || 0).getTime();
+    const right = new Date(b.note?.[key] || 0).getTime();
+    if (right !== left) return right - left;
+    return a.index - b.index;
+  });
+  return ranked.map((item) => item.note);
+}
+
+function selectVisibleNotes(notes, options = {}) {
+  const source = Array.from(notes || []);
+  const category = options.category == null ? "all" : options.category;
+  const byCategory = category === "all"
+    ? source
+    : source.filter((note) => normalizeCategory(note?.category) === normalizeCategory(category));
+  const byStatus = filterNotesByListStatus(byCategory, options.statusFilter || "all");
+  const byTag = filterNotesByTag(byStatus, options.tag || "all");
+  const byQuery = filterNotesByQuery(byTag, options.query || "");
+  return sortNotes(byQuery, options.sortBy || "updated");
 }
 
 function normalizeEditorPoint(value) {
@@ -924,6 +1360,19 @@ function toggleMarkdownTask(line) {
   };
 }
 
+function findMarkdownFootnoteDefinition(lines, label) {
+  const target = String(label || "").trim();
+  if (!target) return null;
+  const values = Array.from(lines || [], (line) => String(line || ""));
+  const pattern = new RegExp(`^\\[\\^${target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]:\\s*`);
+  for (let line = 0; line < values.length; line += 1) {
+    if (pattern.test(values[line])) {
+      return { line, ch: values[line].indexOf("]:") + 2 };
+    }
+  }
+  return null;
+}
+
 function markdownFootnoteTemplate(markdown = "", selected = "") {
   let number = 0;
   const source = String(markdown || "");
@@ -955,9 +1404,14 @@ function markdownBlockTemplate(command, selected = "") {
     return { body, selectionStart: start, selectionEnd: start + diagram.length };
   }
   if (command === "code-block") {
-    const body = selection ? `\`\`\`\n${selection}\n\`\`\`` : "```\n\n```";
-    const start = body.indexOf("\n") + 1;
-    return { body, selectionStart: start, selectionEnd: start + selection.length };
+    if (selection) {
+      const body = `\`\`\`\n${selection}\n\`\`\``;
+      const start = body.indexOf("\n") + 1;
+      return { body, selectionStart: start, selectionEnd: start + selection.length };
+    }
+    const body = "```\n\n```";
+    // Cursor after the opening fence so the language tag can be typed first.
+    return { body, selectionStart: 3, selectionEnd: 3 };
   }
   if (command === "math-block") {
     const expression = selection || "E = mc^2";
@@ -983,19 +1437,34 @@ window.TomfngNoteTools = {
   createHtmlToMarkdown,
   escapeHtml,
   extractMarkdownHeadings,
+  filterNotesByListStatus,
   filterNotesByQuery,
+  filterNotesByTag,
+  findMarkdownFootnoteDefinition,
   findMarkdownImageAt,
   findMarkdownLinkAt,
   formatMarkdownImage,
+  formatMarkdownImageSize,
   formatMarkdownLink,
   formatDate,
   getMarkdownTableContext,
+  getNoteListStatus,
+  lineHasGfmHardBreak,
   makeId,
   makeSlug,
   markdownToHtml,
   markdownBlockTemplate,
+  markdownEmptyBlockEnterEdit,
   markdownFootnoteTemplate,
+  markdownListBackspaceEdit,
+  markdownListJoinBackspaceEdit,
+  markdownPairBackspaceEdit,
+  markdownPairInputEdit,
+  markdownSoftBreakInsert,
+  markdownTableKeyboardEdit,
   editMarkdownTable,
+  parseMarkdownImageSize,
+  renumberMarkdownOrderedList,
   mergeRemotePosts,
   noteContentFingerprint,
   normalizeCategory,
@@ -1006,6 +1475,8 @@ window.TomfngNoteTools = {
   normalizeNotesData,
   normalizeTags,
   parseMarkdownSlashContext,
+  selectVisibleNotes,
+  sortNotes,
   stripMarkdownBlockPrefix,
   toggleMarkdownTask,
   transformMarkdownBlockLines

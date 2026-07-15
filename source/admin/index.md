@@ -38,12 +38,31 @@ comments: false
 <button class="solid-button" id="new-note" type="button"><i class="fa-solid fa-plus"></i><span>新页面</span></button>
 <button class="ghost-button" id="duplicate-note" type="button"><i class="fa-regular fa-copy"></i><span>复制</span></button>
 <button class="danger-button" id="delete-note" type="button"><i class="fa-regular fa-trash-can"></i><span>删除</span></button>
+<button class="ghost-button" id="admin-batch-toggle" type="button" aria-pressed="false" title="多选管理" aria-label="多选管理"><i class="fa-solid fa-check-double"></i><span>多选</span></button>
 </div>
 <label class="admin-note-search" id="admin-note-search-wrap">
 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
 <input id="admin-note-search" type="search" autocomplete="off" placeholder="搜索页面" aria-label="搜索页面">
 </label>
+<div class="admin-filter-stack" id="admin-filter-stack">
+<div class="category-strip" id="admin-status-strip" aria-label="状态"></div>
+<label class="admin-sort-field" id="admin-sort-wrap">
+<span>排序</span>
+<select id="admin-sort" aria-label="排序方式">
+<option value="updated">最近更新</option>
+<option value="created">创建时间</option>
+<option value="title">标题</option>
+</select>
+</label>
 <div class="category-strip" id="admin-category-strip" aria-label="分类"></div>
+<div class="tag-strip" id="admin-tag-strip" aria-label="标签"></div>
+</div>
+<div class="admin-batch-bar" id="admin-batch-bar" hidden>
+<span class="admin-batch-count" id="admin-batch-count">已选 0</span>
+<button class="ghost-button" id="admin-batch-category" type="button"><i class="fa-solid fa-folder"></i><span>改分类</span></button>
+<button class="danger-button" id="admin-batch-delete" type="button"><i class="fa-regular fa-trash-can"></i><span>删除</span></button>
+<button class="ghost-button" id="admin-batch-cancel" type="button"><span>取消</span></button>
+</div>
 <div class="admin-list" id="admin-list" aria-live="polite"></div>
 <div class="admin-outline" id="admin-outline" aria-live="polite" hidden></div>
 </aside>
@@ -81,11 +100,11 @@ comments: false
 </label>
 <label class="field">
 <span>状态</span>
-<select id="field-status" name="status" aria-label="发布状态">
+<select id="field-status" name="status" aria-label="发布状态" disabled>
 <option value="draft">草稿</option>
 <option value="published">已发布</option>
 </select>
-<small class="field-error"></small>
+<small class="field-hint" id="status-hint">由同步与发布自动决定</small>
 </label>
 <label class="field field-wide">
 <span>摘要</span>
@@ -102,7 +121,8 @@ comments: false
 <button class="ghost-button editor-toggle" id="toggle-vim" type="button" aria-pressed="false"><i class="fa-regular fa-keyboard"></i><span>Vim</span></button>
 <button class="ghost-button editor-icon-button" id="toggle-source" type="button" aria-pressed="false" title="Markdown 源码" aria-label="切换 Markdown 源码"><i class="fa-solid fa-code"></i></button>
 <button class="ghost-button editor-icon-button" id="editor-search" type="button" title="查找" aria-label="查找正文"><i class="fa-solid fa-magnifying-glass"></i></button>
-<button class="ghost-button editor-icon-button" id="toggle-focus" type="button" aria-pressed="false" title="沉浸写作" aria-label="切换沉浸写作"><i class="fa-solid fa-expand"></i></button>
+<button class="ghost-button editor-icon-button" id="toggle-typewriter" type="button" aria-pressed="false" title="打字机滚动 (F10)" aria-label="切换打字机滚动"><i class="fa-solid fa-align-center"></i></button>
+<button class="ghost-button editor-icon-button" id="toggle-focus" type="button" aria-pressed="false" title="沉浸写作 (F9)" aria-label="切换沉浸写作"><i class="fa-solid fa-expand"></i></button>
 <span class="editor-stat" id="editor-mode">Markdown</span>
 <span class="editor-stat" id="editor-position">Ln 1, Col 1</span>
 <span class="editor-stat" id="editor-words">0 字</span>
