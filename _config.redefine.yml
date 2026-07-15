@@ -441,7 +441,7 @@ inject:
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-mode.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/hypermd/hypermd-light.css?v=20260706-vimfit3">
     - <link rel="stylesheet" href="/vendor/katex/katex.min.css?v=0.17.0">
-    - <link rel="stylesheet" href="/note-tools.css?v=20260716-manage1">
+    - <link rel="stylesheet" href="/note-tools.css?v=20260716-calm1">
     -
   # Inject custom footer html code
   footer:
@@ -473,7 +473,7 @@ inject:
     - <script src="/mermaid-renderer.js?v=20260714-mermaid1"></script>
     - <script src="/note-utils.js?v=20260716-manage1"></script>
     - <script src="/notes/notes.js?v=20260714-mermaid1"></script>
-    - <script src="/admin/admin.js?v=20260716-manage1"></script>
+    - <script src="/admin/admin.js?v=20260716-calm1"></script>
 # INJECT <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< end
 
 

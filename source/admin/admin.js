@@ -2623,51 +2623,8 @@ function setVimBlockCursorVisible(visible) {
   marker.hidden = !visible;
 }
 
-function shouldShowTypingPulse(change) {
-  if (!state.editor?.hasFocus?.() || change?.origin === "setValue") return false;
-  if (state.editorMode !== "vim") return true;
-  const vim = state.editor.state?.vim;
-  return Boolean(vim?.insertMode || state.vimCursorMode === "insert" || state.vimCursorMode === "replace");
-}
-
-function ensureTypingPulse() {
-  if (state.typingPulse?.isConnected) return state.typingPulse;
-  const wrapper = state.editor?.getWrapperElement?.();
-  if (!wrapper) return null;
-  const pulse = document.createElement("span");
-  pulse.className = "note-typing-pulse";
-  pulse.setAttribute("aria-hidden", "true");
-  wrapper.appendChild(pulse);
-  state.typingPulse = pulse;
-  return pulse;
-}
-
-function triggerTypingPulse(change) {
-  if (!shouldShowTypingPulse(change)) return;
-  window.requestAnimationFrame?.(() => {
-    const pulse = ensureTypingPulse();
-    const wrapper = state.editor?.getWrapperElement?.();
-    const cursor = wrapper?.querySelector(".CodeMirror-cursor");
-    if (!pulse || !wrapper || !cursor) return;
-
-    const cursorRect = cursor.getBoundingClientRect();
-    const wrapperRect = wrapper.getBoundingClientRect();
-    pulse.style.left = `${cursorRect.left - wrapperRect.left}px`;
-    pulse.style.top = `${cursorRect.top - wrapperRect.top}px`;
-    pulse.style.height = `${cursorRect.height}px`;
-    pulse.classList.remove("is-active");
-    void pulse.offsetWidth;
-    pulse.classList.add("is-active");
-
-    const field = getEditorField();
-    if (field) {
-      field.classList.add("is-editor-typing");
-      window.clearTimeout(state.typingTimer);
-      state.typingTimer = window.setTimeout(() => {
-        field.classList.remove("is-editor-typing");
-      }, 720);
-    }
-  });
+function triggerTypingPulse(_change) {
+  // Typing bloom/pulse was too heavy for long-form writing; keep the hook as a no-op.
 }
 
 function positionVimBlockCursor() {
