@@ -10,17 +10,31 @@ const {
   escapeHtml,
   extractMarkdownHeadings,
   filterNotesByQuery,
+  findMarkdownFootnoteDefinition,
+  getNoteListStatus,
+  selectVisibleNotes,
   findMarkdownImageAt,
   findMarkdownLinkAt,
   formatMarkdownImage,
+  formatMarkdownImageSize,
   formatMarkdownLink,
   formatDate,
   getMarkdownTableContext,
+  lineHasGfmHardBreak,
   makeId,
   makeSlug,
   markdownBlockTemplate,
+  markdownEmptyBlockEnterEdit,
   markdownFootnoteTemplate,
+  markdownListBackspaceEdit,
+  markdownListJoinBackspaceEdit,
+  markdownPairBackspaceEdit,
+  markdownPairInputEdit,
+  markdownSoftBreakInsert,
+  markdownTableKeyboardEdit,
   markdownToHtml,
+  parseMarkdownImageSize,
+  renumberMarkdownOrderedList,
   mergeRemotePosts,
   noteContentFingerprint,
   normalizeCategory,
@@ -41,6 +55,7 @@ const CONFIG_KEY = "tomfng-notes-github-config";
 const SESSION_KEY = "tomfng-notes-admin-session";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const EDITOR_VIEW_KEY = "tomfng-notes-editor-view";
+const TYPEWRITER_KEY = "tomfng-notes-typewriter";
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const IMAGE_UPLOAD_TOKEN = "tomfng-image-upload";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -96,7 +111,12 @@ const state = {
   authUser: null,
   busy: false,
   category: initialEditorView.category,
+  statusFilter: initialEditorView.statusFilter || "all",
+  sortBy: initialEditorView.sortBy || "updated",
+  tag: initialEditorView.tag || "all",
   noteQuery: "",
+  batchMode: false,
+  selectedNoteIds: new Set(),
   sidebarMode: initialEditorView.sidebarMode,
   editor: null,
   editorNoteId: null,
@@ -118,11 +138,15 @@ const state = {
   imageUploadQueue: Promise.resolve(),
   richPasteConverter: null,
   selectionToolbarFrame: null,
+  selectionToolbarTimer: null,
   linkPopoverOpen: false,
   linkContext: null,
   tableToolbarFrame: null,
   tableContext: null,
   typewriterFrame: null,
+  typewriterMode: localStorage.getItem(TYPEWRITER_KEY) === "1",
+  imageResizeFrame: null,
+  imageResizeSession: null,
   focusWriting: false,
   blockMenuOpen: false,
   slashMenuOpen: false,
@@ -159,7 +183,18 @@ const elements = {
   pageActions: root.querySelector("#admin-page-actions"),
   noteSearchWrap: root.querySelector("#admin-note-search-wrap"),
   noteSearch: root.querySelector("#admin-note-search"),
+  filterStack: root.querySelector("#admin-filter-stack"),
+  statusStrip: root.querySelector("#admin-status-strip"),
+  sortWrap: root.querySelector("#admin-sort-wrap"),
+  sortSelect: root.querySelector("#admin-sort"),
   categoryStrip: root.querySelector("#admin-category-strip"),
+  tagStrip: root.querySelector("#admin-tag-strip"),
+  batchToggle: root.querySelector("#admin-batch-toggle"),
+  batchBar: root.querySelector("#admin-batch-bar"),
+  batchCount: root.querySelector("#admin-batch-count"),
+  batchCategory: root.querySelector("#admin-batch-category"),
+  batchDelete: root.querySelector("#admin-batch-delete"),
+  batchCancel: root.querySelector("#admin-batch-cancel"),
   categoryOptions: root.querySelector("#category-options"),
   list: root.querySelector("#admin-list"),
   outline: root.querySelector("#admin-outline"),
@@ -183,6 +218,7 @@ const elements = {
   toggleVim: root.querySelector("#toggle-vim"),
   toggleSource: root.querySelector("#toggle-source"),
   editorSearch: root.querySelector("#editor-search"),
+  toggleTypewriter: root.querySelector("#toggle-typewriter"),
   toggleFocus: root.querySelector("#toggle-focus"),
   selectionToolbar: root.querySelector("#editor-selection-toolbar"),
   linkPopover: root.querySelector("#editor-link-popover"),
@@ -253,6 +289,7 @@ function bindWorkspaceEvents() {
   elements.toggleVim.addEventListener("click", toggleEditorMode);
   elements.toggleSource.addEventListener("click", () => toggleSourceMode());
   elements.editorSearch.addEventListener("click", openEditorSearch);
+  elements.toggleTypewriter?.addEventListener("click", () => toggleTypewriterMode());
   elements.toggleFocus.addEventListener("click", () => toggleFocusWriting());
   elements.blockToggle.addEventListener("click", () => toggleBlockMenu());
   elements.blockMenu.querySelectorAll("[data-block-command]").forEach((button) => {
@@ -275,11 +312,23 @@ function bindWorkspaceEvents() {
   });
   elements.noteSearch.addEventListener("input", () => {
     state.noteQuery = elements.noteSearch.value;
+    pruneBatchSelection();
     renderList();
     renderSidebarMode();
   });
   elements.noteSearch.addEventListener("keydown", handleNoteSearchKeydown);
   elements.list.addEventListener("keydown", handleNoteListKeydown);
+  elements.sortSelect?.addEventListener("change", () => {
+    state.sortBy = elements.sortSelect.value || "updated";
+    pruneBatchSelection();
+    ensureSelectedVisible();
+    persistEditorView();
+    render();
+  });
+  elements.batchToggle?.addEventListener("click", () => setBatchMode(!state.batchMode));
+  elements.batchCancel?.addEventListener("click", () => setBatchMode(false));
+  elements.batchCategory?.addEventListener("click", batchChangeCategory);
+  elements.batchDelete?.addEventListener("click", batchDeleteNotes);
   elements.sidebarPages.addEventListener("click", () => setSidebarMode("pages"));
   elements.sidebarOutline.addEventListener("click", () => setSidebarMode("outline"));
   elements.selectionToolbar.addEventListener("mousedown", (event) => event.preventDefault());
@@ -321,6 +370,13 @@ function bindWorkspaceEvents() {
       openPageSearch();
       return;
     }
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "a" && state.batchMode) {
+      const target = event.target;
+      if (target && (target.closest?.("input, textarea, select, .CodeMirror") || target.isContentEditable)) return;
+      event.preventDefault();
+      selectAllVisibleNotes();
+      return;
+    }
     if (event.key !== "Escape") return;
     if (state.linkPopoverOpen) {
       closeLinkPopover({ restoreFocus: true });
@@ -332,6 +388,10 @@ function bindWorkspaceEvents() {
     }
     if (state.blockMenuOpen) {
       toggleBlockMenu(false);
+      return;
+    }
+    if (state.batchMode) {
+      setBatchMode(false);
       return;
     }
     if (state.focusWriting) toggleFocusWriting(false);
@@ -654,29 +714,48 @@ function initMarkdownEditor() {
     },
     foldGutter: false,
     gutters: [],
-    hmdFold: {
-      code: true,
-      emoji: true,
-      image: true,
-      link: true,
-      math: Boolean(katexRenderer)
-    },
+    hmdHideToken: true,
+    hmdFold: getLiveFoldOptions(katexRenderer),
     hmdFoldMath: katexRenderer ? { renderer: katexRenderer } : false,
     hmdFoldCode: mermaidRenderer ? { mermaid: true } : false,
     hmdInsertFile: false,
     hmdReadLink: { baseURI: `${window.location.origin}/` },
     hmdModeLoader: useHyperMD ? loadCodeMirrorMode : false,
     extraKeys: {
-      Enter: enterCommand,
-      "Shift-Enter": shiftEnterCommand,
+      Enter(cm) {
+        if (applyMarkdownTableKey(cm, "enter")) return;
+        if (applyEmptyBlockEnter(cm)) return;
+        cm.execCommand(enterCommand);
+      },
+      "Shift-Enter"(cm) {
+        if (applySoftBreak(cm)) return;
+        cm.execCommand(shiftEnterCommand);
+      },
       Tab(cm) {
+        if (applyMarkdownTableKey(cm, "next")) return;
         if (tabCommand) {
           window.CodeMirror.commands[tabCommand](cm);
           return;
         }
         cm.replaceSelection("  ", "end");
       },
-      "Shift-Tab": shiftTabCommand,
+      "Shift-Tab"(cm) {
+        if (applyMarkdownTableKey(cm, "prev")) return;
+        if (shiftTabCommand) {
+          if (typeof shiftTabCommand === "string") cm.execCommand(shiftTabCommand);
+          else window.CodeMirror.commands[shiftTabCommand]?.(cm);
+          return;
+        }
+        cm.execCommand("indentLess");
+      },
+      Up(cm) {
+        if (applyMarkdownTableKey(cm, "up")) return;
+        return window.CodeMirror.Pass;
+      },
+      Down(cm) {
+        if (applyMarkdownTableKey(cm, "down")) return;
+        return window.CodeMirror.Pass;
+      },
       "Ctrl-S"(cm) {
         cm.save();
         saveWorkspace();
@@ -710,7 +789,8 @@ function initMarkdownEditor() {
       "Cmd-Shift-8": blockShortcut("bullet-list", false),
       "Ctrl-Shift-9": blockShortcut("quote", true),
       "Cmd-Shift-9": blockShortcut("quote", false),
-      F9: () => toggleFocusWriting()
+      F9: () => toggleFocusWriting(),
+      F10: () => toggleTypewriterMode()
     }
   };
 
@@ -720,9 +800,14 @@ function initMarkdownEditor() {
 
   state.editor.on("keydown", handleEditorRawShortcut);
   state.editor.on("renderLine", decorateEditorFootnotes);
+  state.editor.on("renderLine", decorateEditorSoftBreaks);
   bindEditorImageTransfers();
   bindEditorLinkEditing();
+  bindEditorImageResize();
   bindEditorTaskToggles();
+  bindEditorFootnoteJumps();
+  syncTypewriterButton();
+  if (state.typewriterMode) scheduleTypewriterCenter(true);
 
   state.editor.on("change", (_cm, change) => {
     if (state.syncingEditor) return;
@@ -864,6 +949,14 @@ function bindEditorLinkEditing() {
       };
       event.preventDefault();
       event.stopImmediatePropagation();
+      // Typora-like: single click places the caret after the image; edit on double-click / Alt-click.
+      if (event.detail < 2 && !event.altKey) {
+        cm.focus();
+        cm.setCursor(imageReturnCursor(context, cm, context.to.ch));
+        return;
+      }
+      openLinkPopover(context, { focus: event.altKey ? "url" : "label" });
+      return;
     }
     openLinkPopover(context, { focus: "url" });
   }, true);
@@ -875,7 +968,28 @@ function decorateEditorFootnotes(_cm, _line, element) {
     if (!label) return;
     reference.dataset.footnoteLabel = label;
     reference.setAttribute("aria-label", `脚注 ${label}`);
+    reference.title = "点击跳转到脚注定义";
   });
+}
+
+function bindEditorFootnoteJumps() {
+  const cm = state.editor;
+  const wrapper = cm?.getWrapperElement?.();
+  if (!wrapper) return;
+  wrapper.addEventListener("click", (event) => {
+    if (state.sourceMode || event.button !== 0) return;
+    const target = event.target.closest?.("span.cm-hmd-footref");
+    if (!target || target.classList.contains("cm-formatting")) return;
+    const label = target.dataset.footnoteLabel || target.textContent.replace(/^\^/, "").trim();
+    if (!label) return;
+    const definition = findMarkdownFootnoteDefinition(cm.getValue().split("\n"), label);
+    if (!definition) return;
+    event.preventDefault();
+    event.stopPropagation();
+    cm.focus();
+    cm.setCursor(definition);
+    cm.scrollIntoView(definition, 80);
+  }, true);
 }
 
 function handleSmartPaste(event) {
@@ -956,6 +1070,7 @@ function markdownShortcut(command, respectVimNormal = true) {
 }
 
 function handleEditorRawShortcut(cm, event) {
+  if (handleMarkdownPairKeydown(cm, event)) return;
   const key = String(event.key || "").toLowerCase();
   const keyCode = Number(event.keyCode || event.which || 0);
   const mathModifiers = (event.shiftKey && !event.altKey) || (event.altKey && !event.shiftKey);
@@ -969,6 +1084,154 @@ function handleEditorRawShortcut(cm, event) {
   event.preventDefault();
   event.stopPropagation();
   applyMarkdownCommand("math", cm);
+}
+
+function handleMarkdownPairKeydown(cm, event) {
+  if (event.defaultPrevented || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return false;
+  const vim = state.editorMode === "vim" ? cm.state?.vim : null;
+  if (vim && !vim.insertMode && state.vimCursorMode !== "insert" && state.vimCursorMode !== "replace") return false;
+  const selections = cm.listSelections();
+  if (selections.length !== 1) return false;
+  const from = cm.getCursor("from");
+  const to = cm.getCursor("to");
+  if (from.line !== to.line) return false;
+
+  const line = cm.getLine(from.line);
+  let edit = null;
+  let listStructural = false;
+  let joinEdit = null;
+  if (event.key === "Backspace") {
+    if (from.ch !== to.ch) return false;
+    if (from.ch === 0 && from.line > 0) {
+      joinEdit = markdownListJoinBackspaceEdit(cm.getLine(from.line - 1), line);
+      if (joinEdit) {
+        event.preventDefault();
+        event.stopPropagation();
+        const prevLine = from.line - 1;
+        cm.operation(() => {
+          cm.replaceRange(
+            joinEdit.previousText,
+            { line: prevLine, ch: 0 },
+            { line: from.line, ch: line.length },
+            "+delete"
+          );
+          cm.setCursor({ line: prevLine, ch: joinEdit.selectionStart });
+          renumberOrderedListsNear(cm, prevLine);
+        });
+        return true;
+      }
+    }
+    const pairEdit = markdownPairBackspaceEdit(line, from.ch);
+    const listEdit = pairEdit ? null : markdownListBackspaceEdit(line, from.ch);
+    edit = pairEdit || listEdit;
+    listStructural = Boolean(listEdit);
+  } else {
+    edit = markdownPairInputEdit(line, from.ch, to.ch, event.key);
+  }
+  if (!edit) return false;
+  if (edit.type !== "skip" && markdownPairingBlocked(cm, from, event.key, edit)) return false;
+
+  event.preventDefault();
+  event.stopPropagation();
+  if (edit.type === "skip") {
+    cm.setCursor({ line: from.line, ch: edit.cursor });
+    return true;
+  }
+
+  const rangeFrom = { line: from.line, ch: edit.from };
+  const rangeTo = { line: from.line, ch: edit.to };
+  const startIndex = cm.indexFromPos(rangeFrom);
+  cm.operation(() => {
+    cm.replaceRange(edit.text, rangeFrom, rangeTo, event.key === "Backspace" ? "+delete" : "+input");
+    cm.setSelection(
+      cm.posFromIndex(startIndex + edit.selectionStart),
+      cm.posFromIndex(startIndex + edit.selectionEnd)
+    );
+    if (listStructural) renumberOrderedListsNear(cm, from.line);
+  });
+  return true;
+}
+
+function renumberOrderedListsNear(cm, pivotLine) {
+  if (!cm) return;
+  const lines = cm.getValue().split("\n");
+  const patches = [];
+  const seen = new Set();
+  [pivotLine, pivotLine - 1, pivotLine + 1].forEach((probe) => {
+    if (probe < 0 || probe >= lines.length) return;
+    const result = renumberMarkdownOrderedList(lines, probe);
+    if (!result || seen.has(`${result.fromLine}:${result.toLine}`)) return;
+    seen.add(`${result.fromLine}:${result.toLine}`);
+    patches.push(result);
+  });
+  patches
+    .sort((a, b) => b.fromLine - a.fromLine)
+    .forEach((result) => {
+      cm.replaceRange(
+        result.lines.join("\n"),
+        { line: result.fromLine, ch: 0 },
+        { line: result.toLine, ch: cm.getLine(result.toLine).length },
+        "+list-renumber"
+      );
+    });
+}
+
+function applyMarkdownTableKey(cm, action) {
+  if (!cm || state.sourceMode) return false;
+  if (cm.listSelections().length !== 1) return false;
+  const cursor = cm.getCursor();
+  const result = markdownTableKeyboardEdit(cm.getValue().split("\n"), cursor, action);
+  if (!result) return false;
+  cm.operation(() => {
+    if (result.lines) {
+      cm.replaceRange(
+        result.lines.join("\n"),
+        { line: result.fromLine, ch: 0 },
+        { line: result.toLine, ch: cm.getLine(result.toLine).length },
+        "+table-nav"
+      );
+    }
+    cm.setSelection(result.selection.from, result.selection.to);
+  });
+  scheduleTableToolbar();
+  return true;
+}
+
+function applyEmptyBlockEnter(cm) {
+  if (!cm || cm.listSelections().length !== 1 || cm.somethingSelected()) return false;
+  const cursor = cm.getCursor();
+  const line = cm.getLine(cursor.line);
+  if (cursor.ch < line.length) return false;
+  const edit = markdownEmptyBlockEnterEdit(line);
+  if (!edit) return false;
+  cm.operation(() => {
+    cm.replaceRange(
+      `${edit.text}\n`,
+      { line: cursor.line, ch: 0 },
+      { line: cursor.line, ch: line.length },
+      "+empty-block-exit"
+    );
+    cm.setCursor({ line: cursor.line + 1, ch: edit.cursor });
+  });
+  return true;
+}
+
+function getLiveFoldOptions(katexRenderer = window.HyperMD_PowerPack?.["fold-math-with-katex"]?.KatexRenderer || null) {
+  return {
+    code: true,
+    emoji: true,
+    image: true,
+    link: true,
+    math: Boolean(katexRenderer)
+  };
+}
+
+function markdownPairingBlocked(cm, cursor, key, edit) {
+  if (edit.text.includes("\n")) return false;
+  const probe = { line: cursor.line, ch: Math.max(0, cursor.ch - 1) };
+  const tokenType = cm.getTokenTypeAt?.(probe) || "";
+  if (!/\b(?:comment|string|code)\b/.test(tokenType)) return false;
+  return key !== "Backspace";
 }
 
 function applyInlineMarks(cm, open, close, codeStyle) {
@@ -1652,7 +1915,23 @@ function insertStandaloneBlock(cm, body, selectionStart = body.length, selection
 
 function scheduleSelectionToolbar() {
   window.cancelAnimationFrame(state.selectionToolbarFrame);
-  state.selectionToolbarFrame = window.requestAnimationFrame(syncSelectionToolbar);
+  state.selectionToolbarFrame = null;
+  if (state.selectionToolbarTimer) {
+    window.clearTimeout(state.selectionToolbarTimer);
+    state.selectionToolbarTimer = null;
+  }
+
+  const cm = state.editor;
+  if (!cm?.hasFocus?.() || cm.somethingSelected?.() !== true) {
+    hideSelectionToolbar();
+    return;
+  }
+
+  // Typora-like: wait until selection settles so the bubble does not flicker while dragging.
+  state.selectionToolbarTimer = window.setTimeout(() => {
+    state.selectionToolbarTimer = null;
+    state.selectionToolbarFrame = window.requestAnimationFrame(syncSelectionToolbar);
+  }, 180);
 }
 
 function syncSelectionToolbar() {
@@ -1682,6 +1961,12 @@ function syncSelectionToolbar() {
 }
 
 function hideSelectionToolbar() {
+  if (state.selectionToolbarTimer) {
+    window.clearTimeout(state.selectionToolbarTimer);
+    state.selectionToolbarTimer = null;
+  }
+  window.cancelAnimationFrame(state.selectionToolbarFrame);
+  state.selectionToolbarFrame = null;
   elements.selectionToolbar.hidden = true;
 }
 
@@ -1769,24 +2054,208 @@ function toggleFocusWriting(force) {
   elements.toggleFocus.querySelector("i").className = state.focusWriting ? "fa-solid fa-compress" : "fa-solid fa-expand";
   state.editor?.refresh?.();
   state.editor?.focus?.();
-  scheduleTypewriterCenter(true);
+  if (state.focusWriting && state.typewriterMode) scheduleTypewriterCenter(true);
+}
+
+function toggleTypewriterMode(force) {
+  state.typewriterMode = typeof force === "boolean" ? force : !state.typewriterMode;
+  localStorage.setItem(TYPEWRITER_KEY, state.typewriterMode ? "1" : "0");
+  syncTypewriterButton();
+  state.editor?.focus?.();
+  if (state.typewriterMode) scheduleTypewriterCenter(true);
+}
+
+function syncTypewriterButton() {
+  if (!elements.toggleTypewriter) return;
+  elements.toggleTypewriter.classList.toggle("is-active", state.typewriterMode);
+  elements.toggleTypewriter.setAttribute("aria-pressed", state.typewriterMode ? "true" : "false");
 }
 
 function scheduleTypewriterCenter(force = false) {
-  if (!state.focusWriting || !state.editor) return;
+  if (!state.typewriterMode || !state.editor) return;
   window.cancelAnimationFrame(state.typewriterFrame);
   state.typewriterFrame = window.requestAnimationFrame(() => centerActiveLine(force));
 }
 
 function centerActiveLine(force) {
   state.typewriterFrame = null;
-  if (!state.focusWriting || !state.editor?.hasFocus?.()) return;
+  if (!state.typewriterMode || !state.editor?.hasFocus?.()) return;
   const cursor = state.editor.charCoords(state.editor.getCursor(), "window");
   const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
-  const upper = viewportHeight * 0.3;
-  const lower = viewportHeight * 0.58;
+  const stickyHead = root.querySelector(".editor-head")?.getBoundingClientRect?.()?.height || 0;
+  const target = viewportHeight * 0.42 + stickyHead * 0.25;
+  const upper = target - viewportHeight * 0.12;
+  const lower = target + viewportHeight * 0.14;
   if (!force && cursor.top >= upper && cursor.bottom <= lower) return;
-  window.scrollBy(0, cursor.top - viewportHeight * 0.43);
+  window.scrollBy({ top: cursor.top - target, left: 0, behavior: force ? "auto" : "smooth" });
+}
+
+function applySoftBreak(cm) {
+  if (!cm || cm.listSelections().length !== 1 || cm.somethingSelected()) return false;
+  if (state.sourceMode) return false;
+  const cursor = cm.getCursor();
+  const tokenType = cm.getTokenTypeAt?.(cursor) || "";
+  if (/\b(?:comment|string|code)\b/.test(tokenType)) return false;
+  if (getMarkdownTableContext(cm.getValue().split("\n"), cursor)) return false;
+  const line = cm.getLine(cursor.line);
+  // Lists / quotes / headings keep HyperMD indented soft-newline behavior.
+  if (/^\s*(?:>\s*|[-+*]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+|#{1,6}\s+)/.test(line)) return false;
+  const edit = markdownSoftBreakInsert(line, cursor.ch);
+  if (!edit) return false;
+  cm.operation(() => {
+    cm.replaceRange(
+      edit.text,
+      { line: cursor.line, ch: edit.from },
+      { line: cursor.line, ch: edit.to },
+      "+soft-break"
+    );
+    cm.setCursor({ line: cursor.line + 1, ch: edit.cursor });
+  });
+  return true;
+}
+
+function decorateEditorSoftBreaks(cm, lineHandle, element) {
+  element?.querySelectorAll?.(".cm-gfm-hardbreak")?.forEach((node) => node.remove());
+  if (state.sourceMode || !element) return;
+  const lineNo = cm.getLineNumber?.(lineHandle);
+  if (lineNo == null) return;
+  const text = cm.getLine(lineNo);
+  if (!lineHasGfmHardBreak(text)) return;
+  const marker = document.createElement("span");
+  marker.className = "cm-gfm-hardbreak";
+  marker.setAttribute("aria-hidden", "true");
+  marker.title = "GFM 硬换行";
+  element.appendChild(marker);
+}
+
+function bindEditorImageResize() {
+  const cm = state.editor;
+  const wrapper = cm?.getWrapperElement?.();
+  if (!wrapper) return;
+
+  const scheduleSync = () => {
+    window.cancelAnimationFrame(state.imageResizeFrame);
+    state.imageResizeFrame = window.requestAnimationFrame(() => syncFoldedImageSizes(cm));
+  };
+  cm.on("update", scheduleSync);
+  cm.on("changes", scheduleSync);
+  scheduleSync();
+
+  wrapper.addEventListener("pointerdown", (event) => {
+    if (state.sourceMode || event.button !== 0) return;
+    const handle = event.target.closest?.(".hmd-image-resize-handle");
+    if (!handle) return;
+    const host = handle.closest(".hmd-image-resize-host");
+    const img = host?.querySelector("img.hmd-image");
+    if (!img || img.classList.contains("hmd-image-loading")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = img.getBoundingClientRect().width;
+    const context = imageContextFromElement(cm, img);
+    if (!context) return;
+    state.imageResizeSession = {
+      img,
+      host,
+      startX,
+      startWidth,
+      context,
+      liveWidth: Math.round(startWidth)
+    };
+    host.classList.add("is-resizing");
+    handle.setPointerCapture?.(event.pointerId);
+  }, true);
+
+  wrapper.addEventListener("pointermove", (event) => {
+    const session = state.imageResizeSession;
+    if (!session) return;
+    const delta = event.clientX - session.startX;
+    const maxWidth = Math.min(1600, (cm.getWrapperElement()?.clientWidth || 720) - 24);
+    const next = Math.max(80, Math.min(maxWidth, Math.round(session.startWidth + delta)));
+    session.liveWidth = next;
+    session.img.style.width = `${next}px`;
+    session.img.style.maxWidth = "100%";
+    session.img.style.height = "auto";
+  }, true);
+
+  const endResize = (event) => {
+    const session = state.imageResizeSession;
+    if (!session) return;
+    state.imageResizeSession = null;
+    session.host?.classList.remove("is-resizing");
+    if (Math.abs(session.liveWidth - session.startWidth) < 4) {
+      syncFoldedImageSizes(cm);
+      return;
+    }
+    applyImageWidth(cm, session.context, session.liveWidth);
+  };
+  wrapper.addEventListener("pointerup", endResize, true);
+  wrapper.addEventListener("pointercancel", endResize, true);
+}
+
+function imageContextFromElement(cm, img) {
+  const rect = img.getBoundingClientRect();
+  const position = cm.coordsChar({ left: rect.left + 4, top: rect.top + 4 }, "window");
+  const parsed = findMarkdownImageAt(cm.getLine(position.line), position.ch)
+    || findMarkdownImageAt(cm.getLine(position.line), Math.max(0, position.ch - 1));
+  if (!parsed) return null;
+  return imageContextFromParsed(position.line, parsed);
+}
+
+function applyImageWidth(cm, context, width) {
+  if (!cm || !context || !linkContextStillValid(context)) return;
+  const line = cm.getLine(context.from.line);
+  const parsed = findMarkdownImageAt(line, context.from.ch);
+  if (!parsed) return;
+  const titleSuffix = formatMarkdownImageSize(parsed.titleSuffix || "", width);
+  const next = formatMarkdownImage(parsed.label, parsed.url, titleSuffix);
+  if (!next) return;
+  cm.operation(() => {
+    cm.replaceRange(next, context.from, context.to, "+image-resize");
+  });
+  window.requestAnimationFrame(() => syncFoldedImageSizes(cm));
+}
+
+function syncFoldedImageSizes(cm) {
+  state.imageResizeFrame = null;
+  if (!cm || state.sourceMode) return;
+  const wrapper = cm.getWrapperElement?.();
+  if (!wrapper) return;
+  wrapper.querySelectorAll("img.hmd-image").forEach((img) => {
+    if (img.classList.contains("hmd-image-loading")) return;
+    ensureImageResizeHost(img);
+    const context = imageContextFromElement(cm, img);
+    if (!context) return;
+    const line = cm.getLine(context.from.line);
+    const parsed = findMarkdownImageAt(line, context.from.ch);
+    if (!parsed) return;
+    const { width } = parseMarkdownImageSize(parsed.titleSuffix || "");
+    if (width) {
+      img.style.width = `${width}px`;
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      img.dataset.imageWidth = String(width);
+    } else {
+      img.style.width = "";
+      img.style.maxWidth = "100%";
+      img.style.height = "auto";
+      delete img.dataset.imageWidth;
+    }
+  });
+}
+
+function ensureImageResizeHost(img) {
+  if (img.closest(".hmd-image-resize-host")) return;
+  const host = document.createElement("span");
+  host.className = "hmd-image-resize-host";
+  host.contentEditable = "false";
+  img.parentNode?.insertBefore(host, img);
+  host.appendChild(img);
+  const handle = document.createElement("span");
+  handle.className = "hmd-image-resize-handle";
+  handle.title = "拖拽调整图片宽度";
+  handle.setAttribute("aria-hidden", "true");
+  host.appendChild(handle);
 }
 
 function bindFallbackImageTransfers() {
@@ -2419,14 +2888,20 @@ async function deleteSelectedNote() {
     setBusy(false);
   }
 
-  [...state.imageUploads.values()]
-    .filter((task) => task.noteId === note.id)
-    .forEach((task) => removeImageUploadTask(task));
-  discardEditorSession(note.id);
-  state.data.notes = state.data.notes.filter((item) => item.id !== note.id);
-  state.selectedId = state.data.notes[0]?.id || null;
+  removeNoteLocally(note.id);
+  state.selectedId = getVisibleNotes()[0]?.id || state.data.notes[0]?.id || null;
   markDirty(published ? "已提交删除，网站正在更新" : "已删除本地草稿");
   render();
+}
+
+function removeNoteLocally(noteId) {
+  [...state.imageUploads.values()]
+    .filter((task) => task.noteId === noteId)
+    .forEach((task) => removeImageUploadTask(task));
+  discardEditorSession(noteId);
+  state.data.notes = state.data.notes.filter((item) => item.id !== noteId);
+  state.selectedNoteIds.delete(noteId);
+  if (state.selectedId === noteId) state.selectedId = null;
 }
 
 function focusNewNoteTitle() {
@@ -2515,7 +2990,11 @@ function scheduleSecondaryRender(noteId, work) {
 }
 
 function render() {
+  if (elements.sortSelect) elements.sortSelect.value = state.sortBy || "updated";
+  renderStatusFilters();
   renderCategories();
+  renderTags();
+  renderBatchBar();
   renderList();
   renderEditor();
   renderOutline();
@@ -2529,11 +3008,99 @@ function getCategories() {
     .sort((a, b) => a.localeCompare(b, "zh-CN"));
 }
 
+function getTags() {
+  const tags = new Set();
+  state.data.notes.forEach((note) => {
+    normalizeTags(note.tags).forEach((tag) => tags.add(tag));
+  });
+  return [...tags].sort((a, b) => a.localeCompare(b, "zh-CN"));
+}
+
 function getVisibleNotes() {
-  const categorized = state.category === "all"
-    ? state.data.notes
-    : state.data.notes.filter((note) => normalizeCategory(note.category) === state.category);
-  return filterNotesByQuery(categorized, state.noteQuery);
+  return selectVisibleNotes(state.data.notes, {
+    category: state.category,
+    statusFilter: state.statusFilter,
+    tag: state.tag,
+    query: state.noteQuery,
+    sortBy: state.sortBy
+  });
+}
+
+function ensureSelectedVisible() {
+  const visible = getVisibleNotes();
+  if (visible.some((note) => note.id === state.selectedId)) return;
+  state.selectedId = visible[0]?.id || null;
+}
+
+function pruneBatchSelection() {
+  if (!state.batchMode) return;
+  const visible = new Set(getVisibleNotes().map((note) => note.id));
+  state.selectedNoteIds = new Set([...state.selectedNoteIds].filter((id) => visible.has(id)));
+}
+
+function setBatchMode(enabled) {
+  state.batchMode = Boolean(enabled);
+  if (!state.batchMode) state.selectedNoteIds = new Set();
+  if (elements.batchToggle) {
+    elements.batchToggle.classList.toggle("is-active", state.batchMode);
+    elements.batchToggle.setAttribute("aria-pressed", state.batchMode ? "true" : "false");
+  }
+  root.classList.toggle("is-batch-mode", state.batchMode);
+  renderBatchBar();
+  renderList();
+  renderSidebarMode();
+}
+
+function selectAllVisibleNotes() {
+  if (!state.batchMode) setBatchMode(true);
+  state.selectedNoteIds = new Set(getVisibleNotes().map((note) => note.id));
+  renderBatchBar();
+  renderList();
+}
+
+function toggleNoteSelection(noteId) {
+  if (!noteId) return;
+  if (state.selectedNoteIds.has(noteId)) state.selectedNoteIds.delete(noteId);
+  else state.selectedNoteIds.add(noteId);
+  renderBatchBar();
+  renderList();
+}
+
+function renderBatchBar() {
+  if (!elements.batchBar) return;
+  const count = state.selectedNoteIds.size;
+  elements.batchBar.hidden = !state.batchMode || state.sidebarMode === "outline";
+  if (elements.batchCount) elements.batchCount.textContent = `已选 ${count}`;
+  if (elements.batchCategory) elements.batchCategory.disabled = state.busy || count === 0;
+  if (elements.batchDelete) elements.batchDelete.disabled = state.busy || count === 0;
+}
+
+function applyListFilterChange() {
+  pruneBatchSelection();
+  ensureSelectedVisible();
+  persistEditorView();
+  render();
+}
+
+function renderStatusFilters() {
+  if (!elements.statusStrip) return;
+  const options = [
+    ["all", "全部"],
+    ["draft", "草稿"],
+    ["published", "已发布"],
+    ["dirty", "有修改"]
+  ];
+  if (!options.some(([value]) => value === state.statusFilter)) state.statusFilter = "all";
+  elements.statusStrip.innerHTML = options.map(([value, label]) => {
+    const active = value === state.statusFilter ? " is-active" : "";
+    return `<button class="category-filter${active}" type="button" data-status="${value}">${label}</button>`;
+  }).join("");
+  elements.statusStrip.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.statusFilter = button.dataset.status || "all";
+      applyListFilterChange();
+    });
+  });
 }
 
 function renderCategories() {
@@ -2543,7 +3110,7 @@ function renderCategories() {
     persistEditorView();
   }
   const buttons = ["all", ...categories].map((category) => {
-    const label = category === "all" ? "全部" : category;
+    const label = category === "all" ? "全部分类" : category;
     const active = category === state.category ? " is-active" : "";
     return `<button class="category-filter${active}" type="button" data-category="${escapeHtml(category)}">${escapeHtml(label)}</button>`;
   });
@@ -2554,14 +3121,38 @@ function renderCategories() {
   elements.categoryStrip.querySelectorAll("button").forEach((button) => {
     button.addEventListener("click", () => {
       state.category = button.dataset.category;
-      const visible = getVisibleNotes();
-      if (!visible.some((note) => note.id === state.selectedId)) {
-        state.selectedId = visible[0]?.id || null;
-      }
-      persistEditorView();
-      render();
+      applyListFilterChange();
     });
   });
+}
+
+function renderTags() {
+  if (!elements.tagStrip) return;
+  const tags = getTags();
+  if (state.tag !== "all" && !tags.includes(state.tag)) {
+    state.tag = "all";
+    persistEditorView();
+  }
+  const buttons = ["all", ...tags].map((tag) => {
+    const label = tag === "all" ? "全部标签" : tag;
+    const active = tag === state.tag ? " is-active" : "";
+    return `<button class="tag-filter${active}" type="button" data-tag="${escapeHtml(tag)}">${escapeHtml(label)}</button>`;
+  });
+  elements.tagStrip.innerHTML = buttons.join("");
+  elements.tagStrip.hidden = tags.length === 0;
+  elements.tagStrip.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.tag = button.dataset.tag || "all";
+      applyListFilterChange();
+    });
+  });
+}
+
+function noteStatusMeta(note) {
+  const status = getNoteListStatus(note);
+  if (status === "draft") return { name: "草稿", className: "draft" };
+  if (status === "dirty") return { name: "有修改", className: "pending" };
+  return { name: "已发布", className: "published" };
 }
 
 function renderList() {
@@ -2569,10 +3160,11 @@ function renderList() {
   elements.count.textContent = `${visibleNotes.length}`;
   if (!visibleNotes.length) {
     const searching = Boolean(state.noteQuery.trim());
+    const filtered = state.data.notes.length > 0;
     elements.list.innerHTML = `
       <div class="empty-state">
-        <h2>${searching ? "没有匹配页面" : state.data.notes.length ? "这个分类是空的" : "没有页面"}</h2>
-        <p>${searching ? "换个关键词继续查找。" : state.data.notes.length ? "新建页面会自动放进当前分类。" : "点击新建，开始写第一条笔记。"}</p>
+        <h2>${searching ? "没有匹配页面" : filtered ? "没有符合条件的页面" : "没有页面"}</h2>
+        <p>${searching ? "换个关键词继续查找。" : filtered ? "调整状态、分类或标签筛选。" : "点击新建，开始写第一条笔记。"}</p>
       </div>
     `;
     return;
@@ -2580,23 +3172,37 @@ function renderList() {
 
   elements.list.innerHTML = visibleNotes.map((note) => {
     const active = note.id === state.selectedId ? " is-active" : "";
-    const stateName = note.remotePath ? (note.localDirty ? "有修改" : "已发布") : "草稿";
-    const stateClass = note.remotePath ? (note.localDirty ? "pending" : "published") : "draft";
+    const checked = state.selectedNoteIds.has(note.id);
+    const checkedClass = checked ? " is-checked" : "";
+    const status = noteStatusMeta(note);
+    const checkbox = state.batchMode
+      ? `<span class="note-row-check" aria-hidden="true">${checked ? "☑" : "☐"}</span>`
+      : "";
+    const tags = normalizeTags(note.tags).slice(0, 3).join(" · ");
     return `
-      <button class="note-row${active}" type="button" data-id="${escapeHtml(note.id)}"${state.busy ? " disabled" : ""}>
-        <span class="note-row-title">
-          <span>${escapeHtml(note.title || "无标题")}</span>
-          <span class="state-pill state-${stateClass}">${stateName}</span>
+      <button class="note-row${active}${checkedClass}${state.batchMode ? " is-batch" : ""}" type="button" data-id="${escapeHtml(note.id)}"${state.busy ? " disabled" : ""}>
+        ${checkbox}
+        <span class="note-row-body">
+          <span class="note-row-title">
+            <span>${escapeHtml(note.title || "无标题")}</span>
+            <span class="state-pill state-${status.className}">${status.name}</span>
+          </span>
+          <span class="note-row-meta">${escapeHtml(normalizeCategory(note.category))}${tags ? ` · ${escapeHtml(tags)}` : ""} / ${formatDate(note.updatedAt)}</span>
+          <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 110) || "无摘要")}</span>
         </span>
-        <span class="note-row-meta">${escapeHtml(normalizeCategory(note.category))} / ${formatDate(note.updatedAt)}</span>
-        <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 110) || "无摘要")}</span>
       </button>
     `;
   }).join("");
 
   elements.list.querySelectorAll(".note-row").forEach((row) => {
     row.addEventListener("click", (event) => {
-      state.selectedId = row.dataset.id;
+      const noteId = row.dataset.id;
+      if (state.batchMode) {
+        event.preventDefault();
+        toggleNoteSelection(noteId);
+        return;
+      }
+      state.selectedId = noteId;
       render();
       if (event.detail === 0) state.editor?.focus?.();
     });
@@ -2608,6 +3214,7 @@ function setSidebarMode(mode) {
   persistEditorView();
   renderOutline();
   renderSidebarMode();
+  renderBatchBar();
 }
 
 function renderSidebarMode() {
@@ -2615,7 +3222,12 @@ function renderSidebarMode() {
   elements.sidebarTitle.textContent = outlineMode ? "大纲" : "页面";
   elements.pageActions.hidden = outlineMode;
   elements.noteSearchWrap.hidden = outlineMode;
+  if (elements.filterStack) elements.filterStack.hidden = outlineMode;
   elements.categoryStrip.hidden = outlineMode;
+  if (elements.statusStrip) elements.statusStrip.hidden = outlineMode;
+  if (elements.tagStrip) elements.tagStrip.hidden = outlineMode || getTags().length === 0;
+  if (elements.sortWrap) elements.sortWrap.hidden = outlineMode;
+  if (elements.batchBar) elements.batchBar.hidden = outlineMode || !state.batchMode;
   elements.list.hidden = outlineMode;
   elements.outline.hidden = !outlineMode;
   elements.sidebarPages.classList.toggle("is-active", !outlineMode);
@@ -2625,6 +3237,64 @@ function renderSidebarMode() {
   const note = getSelectedNote();
   const count = outlineMode ? extractMarkdownHeadings(note?.content || "").length : getVisibleNotes().length;
   elements.count.textContent = `${count}`;
+}
+
+async function batchDeleteNotes() {
+  if (!requireOwnerAccess() || !state.batchMode) return;
+  const ids = [...state.selectedNoteIds];
+  const notes = state.data.notes.filter((note) => ids.includes(note.id));
+  if (!notes.length) return;
+  const publishedCount = notes.filter((note) => note.remotePath).length;
+  const message = publishedCount
+    ? `确定删除选中的 ${notes.length} 篇页面吗？其中 ${publishedCount} 篇已发布，会从博客移除。`
+    : `确定删除选中的 ${notes.length} 篇草稿吗？此操作无法撤销。`;
+  if (!window.confirm(message)) return;
+
+  state.publishPollId += 1;
+  setBusy(true);
+  setStatus("正在批量删除...");
+  let failed = 0;
+  for (const note of notes) {
+    if (!note.remotePath) {
+      removeNoteLocally(note.id);
+      continue;
+    }
+    try {
+      await apiFetch("/api/posts", {
+        method: "DELETE",
+        body: JSON.stringify({ path: note.remotePath, title: note.title })
+      });
+      removeNoteLocally(note.id);
+    } catch {
+      failed += 1;
+    }
+  }
+  setBusy(false);
+  state.selectedNoteIds = new Set();
+  ensureSelectedVisible();
+  if (failed) markDirty(`已删除部分页面，${failed} 篇远端删除失败`);
+  else markDirty(publishedCount ? "批量删除已提交，网站正在更新" : "已批量删除草稿");
+  if (!state.selectedNoteIds.size) setBatchMode(false);
+  else render();
+}
+
+function batchChangeCategory() {
+  if (!requireOwnerAccess() || !state.batchMode) return;
+  const ids = [...state.selectedNoteIds];
+  const notes = state.data.notes.filter((note) => ids.includes(note.id));
+  if (!notes.length) return;
+  const next = window.prompt("批量改到分类：", notes[0].category || "未分类");
+  if (next == null) return;
+  const category = normalizeCategory(next);
+  const now = new Date().toISOString();
+  notes.forEach((note) => {
+    note.category = category;
+    note.localDirty = true;
+    note.updatedAt = now;
+  });
+  state.category = category;
+  markDirty(`已将 ${notes.length} 篇改到「${category}」`);
+  applyListFilterChange();
 }
 
 function renderOutline() {
@@ -2695,7 +3365,9 @@ function renderEditor() {
   fields.status.disabled = true;
   elements.duplicateNote.disabled = disabled;
   elements.deleteNote.disabled = disabled;
+  if (elements.batchToggle) elements.batchToggle.disabled = state.busy;
   elements.toggleFocus.disabled = disabled;
+  if (elements.toggleTypewriter) elements.toggleTypewriter.disabled = disabled;
   elements.toggleSource.disabled = disabled;
   elements.editorSearch.disabled = disabled;
   elements.blockToggle.disabled = disabled;
@@ -2731,7 +3403,18 @@ function renderEditor() {
   fields.slug.value = syncDraftSlug(note);
   fields.category.value = normalizeCategory(note.category);
   fields.tags.value = note.tags.join(", ");
-  fields.status.value = note.remotePath ? "published" : "draft";
+  const listStatus = getNoteListStatus(note);
+  fields.status.value = listStatus === "draft" ? "draft" : "published";
+  const statusLabel = noteStatusMeta(note).name;
+  const statusHint = root.querySelector("#status-hint");
+  if (statusHint) {
+    statusHint.textContent = listStatus === "dirty"
+      ? "已发布 · 本地有未同步修改（发布后恢复一致）"
+      : listStatus === "published"
+        ? "已发布 · 与线上一致"
+        : "草稿 · 仅保存在本机";
+  }
+  fields.status.setAttribute("aria-label", `发布状态：${statusLabel}`);
   fields.summary.value = note.summary;
   setEditorValue(note.content, { force: switchedDocument });
   setEditorEnabled(!state.busy);
@@ -2899,8 +3582,15 @@ function rememberEditorView(noteId, cursor, scroll) {
 function persistEditorView() {
   state.editorView.selectedId = state.selectedId || "";
   state.editorView.category = state.category;
+  state.editorView.statusFilter = state.statusFilter || "all";
+  state.editorView.sortBy = state.sortBy || "updated";
+  state.editorView.tag = state.tag || "all";
   state.editorView.sidebarMode = state.sidebarMode;
   state.editorView = normalizeEditorViewState(state.editorView);
+  state.statusFilter = state.editorView.statusFilter;
+  state.sortBy = state.editorView.sortBy;
+  state.tag = state.editorView.tag;
+  state.category = state.editorView.category;
   try {
     localStorage.setItem(EDITOR_VIEW_KEY, JSON.stringify(state.editorView));
   } catch {
@@ -2957,7 +3647,7 @@ function toggleSourceMode(force) {
     if (cm.getMode?.().name === "hypermd") {
       cm.operation(() => {
         cm.setOption("hmdHideToken", !state.sourceMode);
-        cm.setOption("hmdFold", !state.sourceMode);
+        cm.setOption("hmdFold", state.sourceMode ? false : getLiveFoldOptions());
         cm.setOption("hmdTableAlign", !state.sourceMode);
       });
     }
@@ -3030,8 +3720,18 @@ function handleNoteSearchKeydown(event) {
 function handleNoteListKeydown(event) {
   const current = event.target.closest?.(".note-row");
   if (!current) return;
+  if (event.key === " " || event.code === "Space") {
+    if (!state.batchMode) return;
+    event.preventDefault();
+    toggleNoteSelection(current.dataset.id);
+    return;
+  }
   if (event.key === "Enter") {
     event.preventDefault();
+    if (state.batchMode) {
+      toggleNoteSelection(current.dataset.id);
+      return;
+    }
     state.selectedId = current.dataset.id;
     persistEditorView();
     render();
@@ -3040,6 +3740,10 @@ function handleNoteListKeydown(event) {
   }
   if (event.key === "Escape") {
     event.preventDefault();
+    if (state.batchMode) {
+      setBatchMode(false);
+      return;
+    }
     elements.noteSearch.focus();
     return;
   }
@@ -3223,14 +3927,16 @@ function setBusy(value) {
     elements.toggleSource,
     elements.editorSearch,
     elements.blockToggle,
+    elements.toggleTypewriter,
     elements.toggleFocus
-  ].forEach((button) => {
+  ].filter(Boolean).forEach((button) => {
     button.disabled = value;
   });
   const note = getSelectedNote();
   elements.duplicateNote.disabled = value || !note;
   elements.deleteNote.disabled = value || !note;
   elements.toggleFocus.disabled = value || !note;
+  if (elements.toggleTypewriter) elements.toggleTypewriter.disabled = value || !note;
   elements.toggleSource.disabled = value || !note;
   elements.editorSearch.disabled = value || !note;
   elements.blockToggle.disabled = value || !note;
