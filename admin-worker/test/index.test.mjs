@@ -5,6 +5,7 @@ import { __test } from "../src/index.mjs";
 
 const env = {
   POST_DIR: "source/_posts",
+  DRAFT_DIR: "source/_drafts",
   ASSET_DIR: "source/images/posts",
   SITE_URL: "http://tomfng.space",
   TIME_ZONE: "Asia/Shanghai"
@@ -155,4 +156,34 @@ test("the deployment revision marker is not exposed in the editor", () => {
     __test.stripRevisionMarker("正文\n\n<!-- tomfng-admin-revision:abc -->\n").trim(),
     "正文"
   );
+});
+
+test("draft paths are recognized and content paths accept posts or drafts", () => {
+  assert.equal(__test.isDraftPath("source/_drafts/hello.md"), true);
+  assert.equal(__test.isDraftPath("source/_posts/hello.md"), false);
+  assert.equal(__test.safeContentPath("source/_drafts/a.md", env), "source/_drafts/a.md");
+  assert.equal(__test.safeContentPath("source/_posts/a.md", env), "source/_posts/a.md");
+  assert.throws(() => __test.safeContentPath("source/secret/a.md", env), /无效的文章路径/);
+  assert.equal(__test.draftFilePath({ title: "草稿", slug: "draft-1" }, env), "source/_drafts/draft-1.md");
+});
+
+test("draft Markdown round-trips with parent id and draft status", () => {
+  const note = {
+    id: "draft-1",
+    title: "远端草稿",
+    slug: "remote-draft",
+    category: "写作",
+    tags: ["idea"],
+    parentId: "parent-9",
+    summary: "草稿摘要",
+    content: "草稿正文",
+    createdAt: "2026-07-13T02:00:00.000Z",
+    updatedAt: "2026-07-13T03:00:00.000Z"
+  };
+  const markdown = __test.buildHexoPost(note, env, "rev-draft");
+  const parsed = __test.parseHexoPost(markdown, "source/_drafts/remote-draft.md", "sha-d", env);
+  assert.match(markdown, /admin_parent: parent-9/);
+  assert.equal(parsed.status, "draft");
+  assert.equal(parsed.parentId, "parent-9");
+  assert.equal(parsed.remotePath, "source/_drafts/remote-draft.md");
 });

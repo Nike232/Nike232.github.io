@@ -49,6 +49,16 @@ const {
   parseMarkdownSlashContext,
   selectVisibleNotes,
   sortNotes,
+  searchNotesWithSnippets,
+  formatRelativeTime,
+  extractNoteCover,
+  publicNoteUrl,
+  isRemoteDraftPath,
+  normalizeLibraryState,
+  touchRecent,
+  toggleIdInList,
+  wouldCreateParentCycle,
+  orderNotesWithPinsAndTree,
   toggleMarkdownTask,
   transformMarkdownBlockLines
 } = window.TomfngNoteTools;
@@ -728,6 +738,42 @@ test("table editing adds and removes columns, rows, and alignment", () => {
   const deletedColumn = editMarkdownTable(lines, { line: 3, ch: 8 }, "delete-column");
   assert.deepEqual(deletedColumn.lines, ["| 名称 |", "| :--- |", "| A |"]);
   assert.equal(editMarkdownTable(deletedColumn.lines, { line: 2, ch: 3 }, "delete-column"), null);
+});
+
+test("library helpers cover search, hierarchy, drafts, and relative time", () => {
+  assert.equal(isRemoteDraftPath("source/_drafts/a.md"), true);
+  assert.equal(isRemoteDraftPath("source/_posts/a.md"), false);
+  assert.equal(formatRelativeTime(new Date().toISOString()).includes(":"), true);
+  assert.equal(extractNoteCover("hello ![x](/images/a.png) more"), "/images/a.png");
+  assert.equal(extractNoteCover("", { cover: "/images/c.png" }), "/images/c.png");
+  assert.match(
+    publicNoteUrl({
+      status: "published",
+      remotePath: "source/_posts/a.md",
+      slug: "hello",
+      createdAt: "2026-07-13T02:00:00.000Z"
+    }),
+    /\/2026\/07\/13\/hello\//
+  );
+  assert.equal(publicNoteUrl({ status: "draft", remotePath: "source/_drafts/a.md", slug: "x" }), "");
+
+  const lib = touchRecent(normalizeLibraryState({}), "n1");
+  assert.deepEqual(lib.recentIds, ["n1"]);
+  assert.deepEqual(toggleIdInList(["a"], "b"), ["b", "a"]);
+  assert.equal(wouldCreateParentCycle([
+    { id: "a", parentId: "" },
+    { id: "b", parentId: "a" }
+  ], "a", "b"), true);
+
+  const notes = [
+    normalizeNote({ id: "root", title: "根", content: "alpha keyword here", updatedAt: "2026-07-10T00:00:00.000Z" }),
+    normalizeNote({ id: "child", title: "子", parentId: "root", content: "beta", updatedAt: "2026-07-11T00:00:00.000Z" })
+  ];
+  const ordered = orderNotesWithPinsAndTree(notes, { pinnedIds: ["child"] }, "updated");
+  assert.equal(ordered.notes[0].id, "child");
+  const hits = searchNotesWithSnippets(notes, "keyword");
+  assert.equal(hits[0].id, "root");
+  assert.match(hits[0].snippet, /keyword/i);
 });
 
 test("note list management filters, sorts, and composes visibility", () => {

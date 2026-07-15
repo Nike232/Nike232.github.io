@@ -8,6 +8,7 @@
     "GITHUB_REPO": "Nike232.github.io",
     "GITHUB_BRANCH": "source",
     "POST_DIR": "source/_posts",
+    "DRAFT_DIR": "source/_drafts",
     "ASSET_DIR": "source/images/posts",
     "SITE_URL": "http://tomfng.space",
     "TIME_ZONE": "Asia/Shanghai",

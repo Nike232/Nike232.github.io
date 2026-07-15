@@ -32,7 +32,9 @@ export default {
         return await postsData(request, env);
       }
       if (url.pathname === "/api/posts" && request.method === "DELETE") return await deletePost(request, env);
+      if (url.pathname === "/api/posts/history" && request.method === "GET") return await postHistory(request, env);
       if (url.pathname === "/api/assets" && request.method === "POST") return await uploadAsset(request, env);
+      if (url.pathname === "/api/drafts" && request.method === "POST") return await saveDraft(request, env);
       if (url.pathname === "/api/publish" && request.method === "POST") return await publish(request, env);
       if (url.pathname === "/api/publish-status" && request.method === "GET") return await publishStatus(request, env);
 
@@ -136,24 +138,19 @@ async function logout(request, env) {
 
 async function postsData(request, env) {
   await requireAdmin(request, env);
-  const directory = normalizePostDirectory(env.POST_DIR || "source/_posts");
-  let entries = [];
-  try {
-    entries = await githubGetContent(directory, env);
-  } catch (error) {
-    if (error.status !== 404) throw error;
-  }
-  if (!Array.isArray(entries)) throw new HttpError(500, "文章目录不是有效的 GitHub 目录");
-
-  const files = entries.filter((entry) => entry.type === "file" && /\.md$/i.test(entry.name || ""));
-  const notes = await mapLimit(files, 6, async (entry) => {
+  const postDir = normalizePostDirectory(env.POST_DIR || "source/_posts");
+  const draftDir = normalizeDraftDirectory(env.DRAFT_DIR || "source/_drafts");
+  const postFiles = await listMarkdownFiles(postDir, env);
+  const draftFiles = await listMarkdownFiles(draftDir, env);
+  const notes = await mapLimit([...postFiles, ...draftFiles], 6, async (entry) => {
     const file = await githubGetContent(entry.path, env);
     return parseHexoPost(decodeBase64(file.content || ""), entry.path, file.sha, env);
   });
   notes.sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime());
 
   return json({
-    path: directory,
+    path: postDir,
+    draftPath: draftDir,
     data: {
       version: 2,
       updatedAt: new Date().toISOString(),
@@ -162,28 +159,36 @@ async function postsData(request, env) {
   }, 200, request, env);
 }
 
-async function publish(request, env) {
+async function listMarkdownFiles(directory, env) {
+  let entries = [];
+  try {
+    entries = await githubGetContent(directory, env);
+  } catch (error) {
+    if (error.status === 404) return [];
+    throw error;
+  }
+  if (!Array.isArray(entries)) throw new HttpError(500, `${directory} 不是有效的 GitHub 目录`);
+  return entries.filter((entry) => entry.type === "file" && /\.md$/i.test(entry.name || ""));
+}
+
+async function saveDraft(request, env) {
   await requireAdmin(request, env);
   requireAllowedOrigin(request, env);
-
   const body = await request.json().catch(() => null);
-  const note = normalizeNote(body?.note || {});
+  const note = normalizeNote({ ...(body?.note || {}), status: "draft" });
   if (!note.title.trim()) throw new HttpError(400, "需要标题");
-
   try {
     await githubGetContent("_config.yml", env);
   } catch {
     throw new HttpError(400, `目标分支 ${githubBranch(env)} 缺少 _config.yml，请把 Worker 指向 Hexo 源码分支`);
   }
-
-  const target = await resolvePostTarget(note, env);
+  const target = await resolveDraftTarget(note, env);
   const revision = randomRevision();
-  const content = buildHexoPost(note, env, revision);
-
+  const content = buildHexoPost({ ...note, status: "draft" }, env, revision);
   const result = await githubPutContent(
     target.path,
     content,
-    `${target.sha ? "Update" : "Publish"} post: ${note.title}`,
+    `${target.sha ? "Update" : "Save"} draft: ${note.title}`,
     target.sha,
     env
   );
@@ -193,8 +198,87 @@ async function publish(request, env) {
     slug: target.slug,
     sha: result.content?.sha || null,
     revision,
-    publicUrl: publicPostUrl(note, env, target.slug),
+    status: "draft",
     commit: result.commit?.sha || null
+  }, 200, request, env);
+}
+
+async function publish(request, env) {
+  await requireAdmin(request, env);
+  requireAllowedOrigin(request, env);
+
+  const body = await request.json().catch(() => null);
+  const note = normalizeNote({ ...(body?.note || {}), status: "published" });
+  if (!note.title.trim()) throw new HttpError(400, "需要标题");
+
+  try {
+    await githubGetContent("_config.yml", env);
+  } catch {
+    throw new HttpError(400, `目标分支 ${githubBranch(env)} 缺少 _config.yml，请把 Worker 指向 Hexo 源码分支`);
+  }
+
+  const previousPath = isDraftPath(note.remotePath) ? note.remotePath : "";
+  const noteForTarget = previousPath
+    ? { ...note, remotePath: "", remoteSha: "" }
+    : note;
+  const publishTarget = await resolvePostTarget(noteForTarget, env);
+  const revision = randomRevision();
+  const content = buildHexoPost({ ...note, status: "published" }, env, revision);
+
+  const result = await githubPutContent(
+    publishTarget.path,
+    content,
+    `${publishTarget.sha ? "Update" : "Publish"} post: ${note.title}`,
+    publishTarget.sha,
+    env
+  );
+
+  if (previousPath && previousPath !== publishTarget.path) {
+    try {
+      const old = await githubGetContent(previousPath, env);
+      await githubDeleteContent(previousPath, `Promote draft to post: ${note.title}`, old.sha, env);
+    } catch (error) {
+      if (error.status !== 404) {
+        // Published file exists; draft cleanup can be retried later.
+      }
+    }
+  }
+
+  return json({
+    ok: true,
+    path: publishTarget.path,
+    slug: publishTarget.slug,
+    sha: result.content?.sha || null,
+    revision,
+    publicUrl: publicPostUrl(note, env, publishTarget.slug),
+    commit: result.commit?.sha || null
+  }, 200, request, env);
+}
+
+async function postHistory(request, env) {
+  await requireAdmin(request, env);
+  requireAllowedOrigin(request, env);
+  const url = new URL(request.url);
+  const path = safeContentPath(url.searchParams.get("path"), env);
+  const owner = env.GITHUB_OWNER || "Nike232";
+  const repo = env.GITHUB_REPO || "Nike232.github.io";
+  const branch = githubBranch(env);
+  const api = new URL(`https://api.github.com/repos/${owner}/${repo}/commits`);
+  api.searchParams.set("path", path);
+  api.searchParams.set("sha", branch);
+  api.searchParams.set("per_page", "20");
+  const commits = await githubFetch(api.href, {}, env);
+  const items = Array.isArray(commits) ? commits : [];
+  return json({
+    path,
+    commits: items.map((item) => ({
+      sha: item.sha,
+      shortSha: String(item.sha || "").slice(0, 7),
+      message: String(item.commit?.message || "").split("\n")[0],
+      date: item.commit?.author?.date || item.commit?.committer?.date || null,
+      author: item.commit?.author?.name || item.author?.login || "",
+      url: item.html_url || `https://github.com/${owner}/${repo}/commit/${item.sha}`
+    }))
   }, 200, request, env);
 }
 
@@ -230,7 +314,7 @@ async function deletePost(request, env) {
   requireAllowedOrigin(request, env);
 
   const body = await request.json().catch(() => null);
-  const path = safePostPath(body?.path, env);
+  const path = safeContentPath(body?.path, env);
   let file = null;
   try {
     file = await githubGetContent(path, env);
@@ -389,6 +473,62 @@ function postFilePath(note, env, slugOverride = "") {
   return dir ? `${dir}/${slug}.md` : `${slug}.md`;
 }
 
+function draftFilePath(note, env, slugOverride = "") {
+  const dir = normalizeDraftDirectory(env.DRAFT_DIR || "source/_drafts");
+  const slug = normalizePostSlug(slugOverride || note.slug || makeSlug(note.title), note.title);
+  return dir ? `${dir}/${slug}.md` : `${slug}.md`;
+}
+
+function isDraftPath(path = "") {
+  return /(^|\/)_drafts\//.test(String(path || "").replace(/\\/g, "/"));
+}
+
+function normalizeDraftDirectory(path) {
+  return normalizePostDirectory(path || "source/_drafts");
+}
+
+async function resolveDraftTarget(note, env) {
+  if (note.remotePath && isDraftPath(note.remotePath)) {
+    const path = safeContentPath(note.remotePath, env);
+    try {
+      const file = await githubGetContent(path, env);
+      if (note.remoteSha && file.sha !== note.remoteSha) {
+        throw new HttpError(409, "远程草稿已被修改，请先拉取后再保存");
+      }
+      return { path, slug: postSlugFromPath(path), sha: file.sha };
+    } catch (error) {
+      if (error.status !== 404) throw error;
+      return { path, slug: postSlugFromPath(path), sha: null };
+    }
+  }
+
+  const baseSlug = normalizePostSlug(note.slug || makeSlug(note.title), note.title);
+  for (let suffix = 1; suffix <= 100; suffix += 1) {
+    const slug = suffix === 1 ? baseSlug : `${baseSlug}-${suffix}`;
+    const path = draftFilePath(note, env, slug);
+    try {
+      const file = await githubGetContent(path, env);
+      const existing = parseHexoPost(decodeBase64(file.content || ""), path, file.sha, env);
+      if (existing.id === note.id) return { path, slug, sha: file.sha };
+    } catch (error) {
+      if (error.status === 404) return { path, slug, sha: null };
+      throw error;
+    }
+  }
+  throw new HttpError(409, "同名草稿过多，无法生成唯一路径");
+}
+
+function safeContentPath(value, env) {
+  const postDir = normalizePostDirectory(env.POST_DIR || "source/_posts");
+  const draftDir = normalizeDraftDirectory(env.DRAFT_DIR || "source/_drafts");
+  const path = String(value || "").trim().replace(/\\/g, "/").replace(/^\/+/, "");
+  const allowed = (path.startsWith(`${postDir}/`) || path.startsWith(`${draftDir}/`))
+    && !path.includes("..")
+    && /\.md$/i.test(path);
+  if (!path || !allowed) throw new HttpError(400, "无效的文章路径");
+  return path;
+}
+
 async function resolvePostTarget(note, env) {
   if (note.remotePath) {
     const path = safePostPath(note.remotePath, env);
@@ -421,6 +561,7 @@ async function resolvePostTarget(note, env) {
 }
 
 function safePostPath(value, env) {
+  // Backward-compatible alias for published posts only.
   const directory = normalizePostDirectory(env.POST_DIR || "source/_posts");
   const path = String(value || "").trim().replace(/\\/g, "/").replace(/^\/+/, "");
   if (!path || path.includes("..") || !path.startsWith(`${directory}/`) || !/\.md$/i.test(path)) {
@@ -461,6 +602,9 @@ function buildHexoPost(note, env, revision = randomRevision()) {
   else delete frontMatter.tags;
   if (note.summary) frontMatter.description = note.summary;
   else delete frontMatter.description;
+  const parentId = String(note.parentId || "").trim();
+  if (parentId) frontMatter.admin_parent = parentId;
+  else delete frontMatter.admin_parent;
   const body = postBody(note);
   const marker = `<!-- ${REVISION_MARKER}:${revision} -->`;
   const yaml = stringifyYaml(frontMatter, { lineWidth: 0 }).trimEnd();
@@ -470,6 +614,9 @@ function buildHexoPost(note, env, revision = randomRevision()) {
 function normalizeNote(note = {}) {
   const current = new Date().toISOString();
   const title = String(note.title || "无标题").trim();
+  const remotePath = String(note.remotePath || "");
+  const draft = isDraftPath(remotePath) || note.status === "draft";
+  const frontMatter = note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {};
   return {
     id: String(note.id || `note-${Date.now().toString(36)}`),
     title,
@@ -477,13 +624,14 @@ function normalizeNote(note = {}) {
     category: normalizeCategory(note.category),
     summary: String(note.summary || "").trim(),
     tags: normalizeTags(note.tags),
-    status: "published",
+    parentId: String(note.parentId || frontMatter.admin_parent || "").trim(),
+    status: draft ? "draft" : "published",
     content: String(note.content || ""),
     createdAt: note.createdAt || current,
     updatedAt: note.updatedAt || current,
-    remotePath: String(note.remotePath || ""),
+    remotePath,
     remoteSha: String(note.remoteSha || ""),
-    frontMatter: note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {}
+    frontMatter
   };
 }
 
@@ -494,6 +642,7 @@ function parseHexoPost(source, path, sha, env = {}) {
   const title = String(attributes.title || slug || "无标题").trim();
   const categories = Array.isArray(attributes.categories) ? attributes.categories : [attributes.categories];
   const body = stripRevisionMarker(parsed.body).trim();
+  const draft = isDraftPath(path);
   return {
     id: String(attributes.admin_id || `post:${path}`),
     title,
@@ -501,7 +650,8 @@ function parseHexoPost(source, path, sha, env = {}) {
     category: normalizeCategory(categories.find(Boolean)),
     summary: String(attributes.description || "").trim(),
     tags: normalizeTags(attributes.tags),
-    status: "published",
+    parentId: String(attributes.admin_parent || "").trim(),
+    status: draft ? "draft" : "published",
     content: body,
     createdAt: hexoDateValue(attributes.date, env),
     updatedAt: hexoDateValue(attributes.updated || attributes.date, env),
@@ -918,13 +1068,17 @@ class HttpError extends Error {
 export const __test = {
   assetFilePath,
   buildHexoPost,
+  draftFilePath,
+  isDraftPath,
   parseImageDataUrl,
   parseHexoPost,
   postBody,
   postSlugFromPath,
   publicPostUrl,
   publicAssetUrl,
+  resolveDraftTarget,
   resolvePostTarget,
+  safeContentPath,
   safePostPath,
   splitFrontMatter,
   stripRevisionMarker
