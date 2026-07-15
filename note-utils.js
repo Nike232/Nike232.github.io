@@ -36,6 +36,13 @@ function normalizeNotesData(payload) {
 function normalizeNote(note = {}) {
   const now = new Date().toISOString();
   const title = String(note.title || "无标题").trim();
+  const frontMatter = note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {};
+  const remotePath = String(note.remotePath || "");
+  const draftRemote = isRemoteDraftPath(remotePath);
+  const status = note.status === "published" && !draftRemote
+    ? "published"
+    : (draftRemote || note.status !== "published" ? "draft" : "draft");
+  const parentId = String(note.parentId || frontMatter.admin_parent || "").trim();
   return {
     id: String(note.id || makeId()),
     title,
@@ -43,16 +50,22 @@ function normalizeNote(note = {}) {
     category: normalizeCategory(note.category),
     summary: String(note.summary || "").trim(),
     tags: normalizeTags(note.tags),
-    status: note.status === "published" ? "published" : "draft",
+    status,
+    parentId: parentId === String(note.id || "") ? "" : parentId,
     content: String(note.content || ""),
     createdAt: note.createdAt || now,
     updatedAt: note.updatedAt || now,
-    remotePath: String(note.remotePath || ""),
+    remotePath,
     remoteSha: String(note.remoteSha || ""),
     localDirty: Boolean(note.localDirty),
     parseError: String(note.parseError || ""),
-    frontMatter: note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {}
+    frontMatter
   };
+}
+
+function isRemoteDraftPath(path = "") {
+  const value = String(path || "").replace(/\\/g, "/");
+  return /(^|\/)_drafts\//.test(value);
 }
 
 function normalizeCategory(category) {
@@ -91,6 +104,7 @@ function noteContentFingerprint(note) {
     slug: String(note?.slug || "").trim(),
     category: normalizeCategory(note?.category),
     tags: normalizeTags(note?.tags),
+    parentId: String(note?.parentId || "").trim(),
     summary: String(note?.summary || "").trim(),
     content: String(note?.content || "").replace(/\r\n/g, "\n").trim()
   });
@@ -98,20 +112,29 @@ function noteContentFingerprint(note) {
 
 function mergeRemotePosts(localData, remoteData) {
   const localNotes = normalizeNotesData(localData || { notes: [] }).notes;
-  const remoteNotes = normalizeNotesData(remoteData || { notes: [] }).notes.map((note) => ({
-    ...note,
-    status: "published",
-    localDirty: false
-  }));
+  const remoteNotes = normalizeNotesData(remoteData || { notes: [] }).notes.map((note) => {
+    const path = String(note.remotePath || "");
+    const draft = isRemoteDraftPath(path) || note.status === "draft";
+    return normalizeNote({
+      ...note,
+      status: draft ? "draft" : "published",
+      localDirty: false
+    });
+  });
   const remoteByPath = new Map(remoteNotes.filter((note) => note.remotePath).map((note) => [note.remotePath, note]));
-  const remoteBySlug = new Map(remoteNotes.map((note) => [String(note.slug || "").toLowerCase(), note]));
+  const remoteBySlug = new Map(
+    remoteNotes
+      .filter((note) => !isRemoteDraftPath(note.remotePath))
+      .map((note) => [String(note.slug || "").toLowerCase(), note])
+  );
   const consumed = new Set();
   const merged = [];
   let preserved = 0;
 
   localNotes.forEach((local) => {
     const remote = (local.remotePath && remoteByPath.get(local.remotePath))
-      || (local.status === "published" && remoteBySlug.get(String(local.slug || "").toLowerCase()));
+      || (local.status === "published" && !isRemoteDraftPath(local.remotePath)
+        && remoteBySlug.get(String(local.slug || "").toLowerCase()));
     if (remote) {
       consumed.add(remote.remotePath || remote.id);
       const same = noteContentFingerprint(local) === noteContentFingerprint(remote);
@@ -120,7 +143,8 @@ function mergeRemotePosts(localData, remoteData) {
         preserved += 1;
         merged.push(normalizeNote({
           ...local,
-          status: "published",
+          status: remote.status,
+          parentId: local.parentId || remote.parentId,
           remotePath: remote.remotePath,
           remoteSha: local.remoteSha || remote.remoteSha,
           localDirty: true
@@ -1199,8 +1223,187 @@ function normalizeEditorViewState(value) {
 }
 
 function getNoteListStatus(note = {}) {
-  if (!note?.remotePath) return "draft";
+  const path = String(note?.remotePath || "");
+  if (!path || isRemoteDraftPath(path) || note?.status === "draft") {
+    return note?.localDirty && path ? "dirty" : "draft";
+  }
   return note.localDirty ? "dirty" : "published";
+}
+
+function normalizeLibraryState(value) {
+  const source = value && typeof value === "object" ? value : {};
+  const cleanIds = (list, max = 100) => {
+    const seen = new Set();
+    const result = [];
+    for (const raw of Array.isArray(list) ? list : []) {
+      const id = String(raw || "").trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      result.push(id);
+      if (result.length >= max) break;
+    }
+    return result;
+  };
+  return {
+    recentIds: cleanIds(source.recentIds, 20),
+    pinnedIds: cleanIds(source.pinnedIds, 50),
+    favoriteIds: cleanIds(source.favoriteIds, 100)
+  };
+}
+
+function touchRecent(library, noteId, max = 20) {
+  const state = normalizeLibraryState(library);
+  const id = String(noteId || "").trim();
+  if (!id) return state;
+  return normalizeLibraryState({
+    ...state,
+    recentIds: [id, ...state.recentIds.filter((item) => item !== id)].slice(0, max)
+  });
+}
+
+function toggleIdInList(list, noteId) {
+  const id = String(noteId || "").trim();
+  const values = Array.from(list || [], (item) => String(item || "").trim()).filter(Boolean);
+  if (!id) return values;
+  return values.includes(id) ? values.filter((item) => item !== id) : [id, ...values];
+}
+
+function formatRelativeTime(value, now = new Date()) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "未记录";
+  const current = new Date(now);
+  const startOfDay = (input) => new Date(input.getFullYear(), input.getMonth(), input.getDate());
+  const dayMs = 24 * 60 * 60 * 1000;
+  const diffDays = Math.round((startOfDay(current) - startOfDay(date)) / dayMs);
+  if (diffDays === 0) {
+    return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(date);
+  }
+  if (diffDays === 1) return "昨天";
+  if (diffDays > 1 && diffDays < 7) return `${diffDays} 天前`;
+  if (diffDays >= 7 && diffDays < 30) return `${Math.floor(diffDays / 7)} 周前`;
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+}
+
+function extractNoteCover(content = "", frontMatter = {}) {
+  const fm = frontMatter && typeof frontMatter === "object" ? frontMatter : {};
+  const fromFm = String(fm.cover || fm.image || fm.thumbnail || "").trim();
+  if (fromFm && !/^javascript:/i.test(fromFm)) return fromFm;
+  const match = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/.exec(String(content || ""));
+  if (!match) return "";
+  const url = String(match[1] || "").trim();
+  if (!url || /^javascript:/i.test(url)) return "";
+  return url;
+}
+
+function publicNoteUrl(note = {}, siteBase = "http://tomfng.space") {
+  if (isRemoteDraftPath(note.remotePath)) return "";
+  if (!note.remotePath && note.status !== "published") return "";
+  const base = String(siteBase || "http://tomfng.space").replace(/\/+$/g, "") || "http://tomfng.space";
+  const created = new Date(note.createdAt || Date.now());
+  if (Number.isNaN(created.getTime())) return "";
+  const year = String(created.getFullYear());
+  const month = String(created.getMonth() + 1).padStart(2, "0");
+  const day = String(created.getDate()).padStart(2, "0");
+  const slug = encodeURIComponent(String(note.slug || makeSlug(note.title || "note")).trim());
+  return `${base}/${year}/${month}/${day}/${slug}/`;
+}
+
+function searchNotesWithSnippets(notes, query, options = {}) {
+  const terms = String(query || "")
+    .toLocaleLowerCase("zh-CN")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  const limit = Math.max(1, Math.min(50, Number(options.limit) || 20));
+  if (!terms.length) return [];
+  const results = [];
+  for (const note of Array.from(notes || [])) {
+    const title = String(note?.title || "");
+    const summary = String(note?.summary || "");
+    const content = String(note?.content || "");
+    const haystack = [title, summary, content].join("\n");
+    const lower = haystack.toLocaleLowerCase("zh-CN");
+    if (!terms.every((term) => lower.includes(term))) continue;
+    const primary = terms[0];
+    const index = lower.indexOf(primary);
+    const source = index < title.length
+      ? title
+      : index < title.length + 1 + summary.length
+        ? summary
+        : content;
+    const localIndex = source.toLocaleLowerCase("zh-CN").indexOf(primary);
+    const start = Math.max(0, localIndex - 28);
+    const end = Math.min(source.length, localIndex + primary.length + 36);
+    let snippet = source.slice(start, end).replace(/\s+/g, " ").trim();
+    if (start > 0) snippet = `…${snippet}`;
+    if (end < source.length) snippet = `${snippet}…`;
+    results.push({
+      id: note.id,
+      title: title || "无标题",
+      status: getNoteListStatus(note),
+      snippet: snippet || summary || content.slice(0, 80),
+      score: terms.reduce((sum, term) => sum + (lower.split(term).length - 1), 0)
+    });
+    if (results.length >= limit) break;
+  }
+  return results.sort((a, b) => b.score - a.score);
+}
+
+function wouldCreateParentCycle(notes, noteId, parentId) {
+  const id = String(noteId || "").trim();
+  let cursor = String(parentId || "").trim();
+  if (!id || !cursor) return false;
+  if (cursor === id) return true;
+  const byId = new Map(Array.from(notes || []).map((note) => [String(note.id), note]));
+  const seen = new Set();
+  while (cursor) {
+    if (cursor === id) return true;
+    if (seen.has(cursor)) return true;
+    seen.add(cursor);
+    cursor = String(byId.get(cursor)?.parentId || "").trim();
+  }
+  return false;
+}
+
+function buildNoteTree(notes) {
+  const items = Array.from(notes || []).map((note) => normalizeNote(note));
+  const byId = new Map(items.map((note) => [note.id, { ...note, children: [] }]));
+  const roots = [];
+  byId.forEach((node) => {
+    const parent = node.parentId && byId.get(node.parentId);
+    if (parent && parent.id !== node.id) parent.children.push(node);
+    else roots.push(node);
+  });
+  const sortNodes = (nodes) => {
+    nodes.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+    nodes.forEach((node) => sortNodes(node.children));
+  };
+  sortNodes(roots);
+  return roots;
+}
+
+function flattenNoteTree(nodes, depth = 0, output = []) {
+  for (const node of Array.from(nodes || [])) {
+    output.push({ note: node, depth });
+    flattenNoteTree(node.children || [], depth + 1, output);
+  }
+  return output;
+}
+
+function orderNotesWithPinsAndTree(notes, library = {}, sortBy = "updated") {
+  const sorted = sortNotes(notes, sortBy);
+  const pinned = new Set(normalizeLibraryState(library).pinnedIds);
+  const pinnedNotes = sorted.filter((note) => pinned.has(note.id));
+  const rest = sorted.filter((note) => !pinned.has(note.id));
+  const tree = buildNoteTree(rest);
+  const flat = flattenNoteTree(tree);
+  // Keep pinned at top (flat), then tree-ordered rest.
+  const restOrdered = flat.map((item) => item.note);
+  const depthById = new Map(flat.map((item) => [item.note.id, item.depth]));
+  return {
+    notes: [...pinnedNotes, ...restOrdered],
+    depthById
+  };
 }
 
 function filterNotesByListStatus(notes, statusFilter = "all") {
@@ -1245,6 +1448,9 @@ function selectVisibleNotes(notes, options = {}) {
   const byStatus = filterNotesByListStatus(byCategory, options.statusFilter || "all");
   const byTag = filterNotesByTag(byStatus, options.tag || "all");
   const byQuery = filterNotesByQuery(byTag, options.query || "");
+  if (options.library || options.tree) {
+    return orderNotesWithPinsAndTree(byQuery, options.library || {}, options.sortBy || "updated").notes;
+  }
   return sortNotes(byQuery, options.sortBy || "updated");
 }
 
@@ -1434,21 +1640,26 @@ function markdownBlockTemplate(command, selected = "") {
 }
 
 window.TomfngNoteTools = {
+  buildNoteTree,
   createHtmlToMarkdown,
   escapeHtml,
   extractMarkdownHeadings,
+  extractNoteCover,
   filterNotesByListStatus,
   filterNotesByQuery,
   filterNotesByTag,
   findMarkdownFootnoteDefinition,
   findMarkdownImageAt,
   findMarkdownLinkAt,
+  flattenNoteTree,
   formatMarkdownImage,
   formatMarkdownImageSize,
   formatMarkdownLink,
   formatDate,
+  formatRelativeTime,
   getMarkdownTableContext,
   getNoteListStatus,
+  isRemoteDraftPath,
   lineHasGfmHardBreak,
   makeId,
   makeSlug,
@@ -1463,7 +1674,10 @@ window.TomfngNoteTools = {
   markdownSoftBreakInsert,
   markdownTableKeyboardEdit,
   editMarkdownTable,
+  normalizeLibraryState,
+  orderNotesWithPinsAndTree,
   parseMarkdownImageSize,
+  publicNoteUrl,
   renumberMarkdownOrderedList,
   mergeRemotePosts,
   noteContentFingerprint,
@@ -1475,10 +1689,14 @@ window.TomfngNoteTools = {
   normalizeNotesData,
   normalizeTags,
   parseMarkdownSlashContext,
+  searchNotesWithSnippets,
   selectVisibleNotes,
   sortNotes,
   stripMarkdownBlockPrefix,
+  toggleIdInList,
   toggleMarkdownTask,
-  transformMarkdownBlockLines
+  touchRecent,
+  transformMarkdownBlockLines,
+  wouldCreateParentCycle
 };
 }());

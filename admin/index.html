@@ -141,7 +141,7 @@
 <meta property="og:locale" content="zh_CN">
 <meta property="og:image" content="http://tomfng.space/images/redefine-og.webp">
 <meta property="article:published_time" content="2026-07-05T17:10:00.000Z">
-<meta property="article:modified_time" content="2026-07-15T18:17:07.859Z">
+<meta property="article:modified_time" content="2026-07-15T19:12:32.604Z">
 <meta property="article:author" content="Tomfng">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:image" content="http://tomfng.space/images/redefine-og.webp">
@@ -198,7 +198,7 @@
     
             
                 
-                    <link rel="stylesheet" href="/note-tools.css?v=20260716-calm1">
+                    <link rel="stylesheet" href="/note-tools.css?v=20260716-library1">
                 
     
 
@@ -815,6 +815,8 @@
 <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
 <input id="admin-note-search" type="search" autocomplete="off" placeholder="搜索页面" aria-label="搜索页面">
 </label>
+<div class="admin-recent-strip" id="admin-recent-strip" aria-label="最近打开" hidden></div>
+<div class="admin-search-results" id="admin-search-results" hidden></div>
 <div class="admin-filter-stack" id="admin-filter-stack">
 <div class="category-strip" id="admin-status-strip" aria-label="状态"></div>
 <label class="admin-sort-field" id="admin-sort-wrap">
@@ -841,9 +843,14 @@
 <div class="status-line">
 <span class="status-text" id="status-text">本地工作区</span>
 <div class="sync-actions">
-<button class="ghost-button" id="pull-remote" type="button"><i class="fa-solid fa-rotate"></i><span>同步文章</span></button>
-<button class="ghost-button" id="save-local" type="button"><i class="fa-regular fa-floppy-disk"></i><span>本地保存</span></button>
-<button class="solid-button" id="publish-remote" type="button"><i class="fa-solid fa-cloud-arrow-up"></i><span>发布文章</span></button>
+<button class="ghost-button" id="pull-remote" type="button"><i class="fa-solid fa-rotate"></i><span>同步</span></button>
+<button class="ghost-button" id="save-draft-remote" type="button"><i class="fa-solid fa-cloud"></i><span>远端草稿</span></button>
+<button class="ghost-button" id="save-local" type="button"><i class="fa-regular fa-floppy-disk"></i><span>本地</span></button>
+<button class="solid-button" id="publish-remote" type="button"><i class="fa-solid fa-cloud-arrow-up"></i><span>发布</span></button>
+<button class="ghost-button" id="export-workspace" type="button" title="导出工作区"><i class="fa-solid fa-file-export"></i></button>
+<button class="ghost-button" id="import-workspace" type="button" title="导入工作区"><i class="fa-solid fa-file-import"></i></button>
+<button class="ghost-button" id="note-history" type="button" title="版本历史"><i class="fa-solid fa-clock-rotate-left"></i></button>
+<input id="import-workspace-file" type="file" accept="application/json,.json" hidden>
 </div>
 </div>
 <form class="editor-form" id="editor-form">
@@ -868,6 +875,13 @@
 <span>标签</span>
 <input id="field-tags" name="tags" autocomplete="off" placeholder="writing, idea">
 <small class="field-error"></small>
+</label>
+<label class="field">
+<span>父页面</span>
+<select id="field-parent" name="parent" aria-label="父页面">
+<option value="">无（根页面）</option>
+</select>
+<small class="field-hint">用于轻量层级，子页面在列表中缩进</small>
 </label>
 <label class="field">
 <span>状态</span>
@@ -973,6 +987,16 @@
 <div class="note-rendered" id="preview-content"></div>
 </div>
 </details>
+<dialog class="admin-history-dialog" id="admin-history-dialog">
+<div class="admin-history-card">
+<div class="admin-history-head">
+<strong>版本历史</strong>
+<button type="button" class="ghost-button" id="admin-history-close">关闭</button>
+</div>
+<p class="admin-history-path" id="admin-history-path"></p>
+<div class="admin-history-list" id="admin-history-list"></div>
+</div>
+</dialog>
 <details class="connection-panel" data-admin-workspace hidden>
 <summary>发布服务</summary>
 <div class="token-grid">
@@ -1233,7 +1257,7 @@
                 
 
                     
-                        <script data-swup-reload-script src="/note-utils.js?v=20260716-manage1"></script>
+                        <script data-swup-reload-script src="/note-utils.js?v=20260716-library1"></script>
                     
         
                 
@@ -1245,7 +1269,7 @@
                 
 
                     
-                        <script data-swup-reload-script src="/admin/admin.js?v=20260716-calm1"></script>
+                        <script data-swup-reload-script src="/admin/admin.js?v=20260716-library1"></script>
                     
         
         

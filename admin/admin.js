@@ -9,10 +9,15 @@ const {
   editMarkdownTable,
   escapeHtml,
   extractMarkdownHeadings,
+  extractNoteCover,
   filterNotesByQuery,
   findMarkdownFootnoteDefinition,
+  formatRelativeTime,
   getNoteListStatus,
+  isRemoteDraftPath,
+  orderNotesWithPinsAndTree,
   selectVisibleNotes,
+  searchNotesWithSnippets,
   findMarkdownImageAt,
   findMarkdownLinkAt,
   formatMarkdownImage,
@@ -33,7 +38,9 @@ const {
   markdownSoftBreakInsert,
   markdownTableKeyboardEdit,
   markdownToHtml,
+  normalizeLibraryState,
   parseMarkdownImageSize,
+  publicNoteUrl,
   renumberMarkdownOrderedList,
   mergeRemotePosts,
   noteContentFingerprint,
@@ -46,8 +53,11 @@ const {
   normalizeTags,
   parseMarkdownSlashContext,
   stripMarkdownBlockPrefix,
+  toggleIdInList,
   toggleMarkdownTask,
-  transformMarkdownBlockLines
+  touchRecent,
+  transformMarkdownBlockLines,
+  wouldCreateParentCycle
 } = tools;
 
 const STORAGE_KEY = "tomfng-notes-workspace";
@@ -56,6 +66,8 @@ const SESSION_KEY = "tomfng-notes-admin-session";
 const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const EDITOR_VIEW_KEY = "tomfng-notes-editor-view";
 const TYPEWRITER_KEY = "tomfng-notes-typewriter";
+const LIBRARY_KEY = "tomfng-notes-library";
+const SITE_BASE = "http://tomfng.space";
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const IMAGE_UPLOAD_TOKEN = "tomfng-image-upload";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -117,6 +129,8 @@ const state = {
   noteQuery: "",
   batchMode: false,
   selectedNoteIds: new Set(),
+  library: normalizeLibraryState(loadLibraryState()),
+  noteDepthById: new Map(),
   sidebarMode: initialEditorView.sidebarMode,
   editor: null,
   editorNoteId: null,
@@ -164,6 +178,7 @@ const fields = {
   slug: root.querySelector("#field-slug"),
   category: root.querySelector("#field-category"),
   tags: root.querySelector("#field-tags"),
+  parent: root.querySelector("#field-parent"),
   status: root.querySelector("#field-status"),
   summary: root.querySelector("#field-summary"),
   content: root.querySelector("#field-content")
@@ -183,6 +198,8 @@ const elements = {
   pageActions: root.querySelector("#admin-page-actions"),
   noteSearchWrap: root.querySelector("#admin-note-search-wrap"),
   noteSearch: root.querySelector("#admin-note-search"),
+  recentStrip: root.querySelector("#admin-recent-strip"),
+  searchResults: root.querySelector("#admin-search-results"),
   filterStack: root.querySelector("#admin-filter-stack"),
   statusStrip: root.querySelector("#admin-status-strip"),
   sortWrap: root.querySelector("#admin-sort-wrap"),
@@ -212,7 +229,16 @@ const elements = {
   deleteNote: root.querySelector("#delete-note"),
   saveLocal: root.querySelector("#save-local"),
   pullRemote: root.querySelector("#pull-remote"),
+  saveDraftRemote: root.querySelector("#save-draft-remote"),
   publishRemote: root.querySelector("#publish-remote"),
+  exportWorkspace: root.querySelector("#export-workspace"),
+  importWorkspace: root.querySelector("#import-workspace"),
+  importWorkspaceFile: root.querySelector("#import-workspace-file"),
+  noteHistory: root.querySelector("#note-history"),
+  historyDialog: root.querySelector("#admin-history-dialog"),
+  historyClose: root.querySelector("#admin-history-close"),
+  historyPath: root.querySelector("#admin-history-path"),
+  historyList: root.querySelector("#admin-history-list"),
   saveConfig: root.querySelector("#save-config"),
   logoutAdmin: root.querySelector("#logout-admin"),
   toggleVim: root.querySelector("#toggle-vim"),
@@ -283,7 +309,13 @@ function bindWorkspaceEvents() {
   elements.deleteNote.addEventListener("click", deleteSelectedNote);
   elements.saveLocal.addEventListener("click", saveWorkspace);
   elements.pullRemote.addEventListener("click", pullRemote);
+  elements.saveDraftRemote?.addEventListener("click", saveDraftRemote);
   elements.publishRemote.addEventListener("click", publishRemote);
+  elements.exportWorkspace?.addEventListener("click", exportWorkspace);
+  elements.importWorkspace?.addEventListener("click", () => elements.importWorkspaceFile?.click());
+  elements.importWorkspaceFile?.addEventListener("change", importWorkspaceFromFile);
+  elements.noteHistory?.addEventListener("click", openNoteHistory);
+  elements.historyClose?.addEventListener("click", () => elements.historyDialog?.close?.());
   elements.saveConfig.addEventListener("click", saveConfig);
   elements.logoutAdmin.addEventListener("click", logoutAdmin);
   elements.toggleVim.addEventListener("click", toggleEditorMode);
@@ -2888,6 +2920,10 @@ function updateSelectedFromFields() {
   note.title = fields.title.value.trimStart();
   note.category = normalizeCategory(fields.category.value);
   note.tags = normalizeTags(fields.tags.value);
+  const previousParentId = String(note.parentId || "");
+  const nextParent = String(fields.parent?.value || "").trim();
+  note.parentId = wouldCreateParentCycle(state.data.notes, note.id, nextParent) ? previousParentId : nextParent;
+  if (fields.parent) fields.parent.value = note.parentId || "";
   note.slug = note.remotePath
     ? ensureNoteSlug({ ...note, slug: note.slug || fields.slug.value.trim() })
     : autoSlugForTitle(note.title);
@@ -2898,6 +2934,7 @@ function updateSelectedFromFields() {
     title: previous.title !== note.title,
     category: previous.category !== note.category,
     tags: previous.tags !== note.tags.join("\u0000"),
+    parentId: previousParentId !== String(note.parentId || ""),
     summary: previous.summary !== note.summary,
     content: previous.content !== note.content
   };
@@ -2951,6 +2988,8 @@ function render() {
   renderStatusFilters();
   renderCategories();
   renderTags();
+  renderRecentStrip();
+  renderSearchResults();
   renderBatchBar();
   renderList();
   renderEditor();
@@ -2958,6 +2997,113 @@ function render() {
   renderSidebarMode();
   renderDirtyState();
   updateEditorStats();
+}
+
+function loadLibraryState() {
+  try {
+    return JSON.parse(localStorage.getItem(LIBRARY_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function persistLibraryState() {
+  state.library = normalizeLibraryState(state.library);
+  try {
+    localStorage.setItem(LIBRARY_KEY, JSON.stringify(state.library));
+  } catch {
+    // Library prefs are convenience-only.
+  }
+}
+
+function rememberOpenedNote(noteId) {
+  if (!noteId) return;
+  state.library = touchRecent(state.library, noteId);
+  persistLibraryState();
+}
+
+function togglePinned(noteId) {
+  state.library = normalizeLibraryState({
+    ...state.library,
+    pinnedIds: toggleIdInList(state.library.pinnedIds, noteId)
+  });
+  persistLibraryState();
+  renderList();
+  renderRecentStrip();
+}
+
+function toggleFavorite(noteId) {
+  state.library = normalizeLibraryState({
+    ...state.library,
+    favoriteIds: toggleIdInList(state.library.favoriteIds, noteId)
+  });
+  persistLibraryState();
+  renderList();
+  renderRecentStrip();
+}
+
+function renderRecentStrip() {
+  if (!elements.recentStrip) return;
+  const ids = state.library.recentIds || [];
+  const notes = ids
+    .map((id) => state.data.notes.find((note) => note.id === id))
+    .filter(Boolean)
+    .slice(0, 8);
+  if (!notes.length || state.sidebarMode === "outline") {
+    elements.recentStrip.hidden = true;
+    elements.recentStrip.innerHTML = "";
+    return;
+  }
+  elements.recentStrip.hidden = false;
+  elements.recentStrip.innerHTML = [
+    '<span class="admin-recent-label">最近</span>',
+    ...notes.map((note) => (
+      `<button type="button" class="admin-recent-chip${note.id === state.selectedId ? " is-active" : ""}" data-id="${escapeHtml(note.id)}">${escapeHtml(note.title || "无标题")}</button>`
+    ))
+  ].join("");
+  elements.recentStrip.querySelectorAll("button[data-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedId = button.dataset.id;
+      rememberOpenedNote(state.selectedId);
+      render();
+    });
+  });
+}
+
+function renderSearchResults() {
+  if (!elements.searchResults) return;
+  const query = state.noteQuery.trim();
+  if (!query || state.sidebarMode === "outline") {
+    elements.searchResults.hidden = true;
+    elements.searchResults.innerHTML = "";
+    return;
+  }
+  const hits = searchNotesWithSnippets(getVisibleNotes(), query, { limit: 12 });
+  elements.searchResults.hidden = false;
+  if (!hits.length) {
+    elements.searchResults.innerHTML = `<div class="admin-search-empty">无匹配结果</div>`;
+    return;
+  }
+  elements.searchResults.innerHTML = hits.map((hit) => {
+    const marked = escapeHtml(hit.snippet).replace(
+      new RegExp(`(${query.trim().split(/\s+/).map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`, "ig"),
+      "<mark>$1</mark>"
+    );
+    return `
+      <button type="button" class="admin-search-hit" data-id="${escapeHtml(hit.id)}">
+        <span class="admin-search-hit-title">${escapeHtml(hit.title)} <span class="state-pill state-${hit.status === "dirty" ? "pending" : hit.status}">${hit.status === "dirty" ? "有修改" : hit.status === "published" ? "已发布" : "草稿"}</span></span>
+        <span class="admin-search-hit-snippet">${marked}</span>
+      </button>
+    `;
+  }).join("");
+  elements.searchResults.querySelectorAll("button[data-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedId = button.dataset.id;
+      rememberOpenedNote(state.selectedId);
+      render();
+      state.editor?.focus?.();
+    });
+  });
 }
 
 function getCategories() {
@@ -2974,13 +3120,16 @@ function getTags() {
 }
 
 function getVisibleNotes() {
-  return selectVisibleNotes(state.data.notes, {
+  const filtered = selectVisibleNotes(state.data.notes, {
     category: state.category,
     statusFilter: state.statusFilter,
     tag: state.tag,
     query: state.noteQuery,
     sortBy: state.sortBy
   });
+  const ordered = orderNotesWithPinsAndTree(filtered, state.library, state.sortBy);
+  state.noteDepthById = ordered.depthById;
+  return ordered.notes;
 }
 
 function ensureSelectedVisible() {
@@ -3107,7 +3256,12 @@ function renderTags() {
 
 function noteStatusMeta(note) {
   const status = getNoteListStatus(note);
-  if (status === "draft") return { name: "草稿", className: "draft" };
+  if (status === "draft") {
+    return {
+      name: isRemoteDraftPath(note.remotePath) ? "远端草稿" : "草稿",
+      className: "draft"
+    };
+  }
   if (status === "dirty") return { name: "有修改", className: "pending" };
   return { name: "已发布", className: "published" };
 }
@@ -3127,27 +3281,43 @@ function renderList() {
     return;
   }
 
+  const pinned = new Set(state.library.pinnedIds || []);
+  const favorites = new Set(state.library.favoriteIds || []);
   elements.list.innerHTML = visibleNotes.map((note) => {
     const active = note.id === state.selectedId ? " is-active" : "";
     const checked = state.selectedNoteIds.has(note.id);
     const checkedClass = checked ? " is-checked" : "";
     const status = noteStatusMeta(note);
+    const depth = state.noteDepthById.get(note.id) || 0;
+    const cover = extractNoteCover(note.content, note.frontMatter);
+    const liveUrl = publicNoteUrl(note, SITE_BASE);
     const checkbox = state.batchMode
       ? `<span class="note-row-check" aria-hidden="true">${checked ? "☑" : "☐"}</span>`
       : "";
+    const coverHtml = cover
+      ? `<span class="note-row-cover" style="background-image:url('${escapeHtml(cover)}')"></span>`
+      : `<span class="note-row-cover is-empty"></span>`;
     const tags = normalizeTags(note.tags).slice(0, 3).join(" · ");
     return `
-      <button class="note-row${active}${checkedClass}${state.batchMode ? " is-batch" : ""}" type="button" data-id="${escapeHtml(note.id)}"${state.busy ? " disabled" : ""}>
-        ${checkbox}
-        <span class="note-row-body">
-          <span class="note-row-title">
-            <span>${escapeHtml(note.title || "无标题")}</span>
-            <span class="state-pill state-${status.className}">${status.name}</span>
+      <div class="note-row-wrap" style="--note-depth:${depth}">
+        <button class="note-row${active}${checkedClass}${state.batchMode ? " is-batch" : ""}${depth ? " is-child" : ""}" type="button" data-id="${escapeHtml(note.id)}"${state.busy ? " disabled" : ""}>
+          ${checkbox}
+          ${coverHtml}
+          <span class="note-row-body">
+            <span class="note-row-title">
+              <span>${pinned.has(note.id) ? "📌 " : ""}${favorites.has(note.id) ? "★ " : ""}${escapeHtml(note.title || "无标题")}</span>
+              <span class="state-pill state-${status.className}">${status.name}</span>
+            </span>
+            <span class="note-row-meta">${escapeHtml(normalizeCategory(note.category))}${tags ? ` · ${escapeHtml(tags)}` : ""} · ${escapeHtml(formatRelativeTime(note.updatedAt))}</span>
+            <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 110) || "无摘要")}</span>
           </span>
-          <span class="note-row-meta">${escapeHtml(normalizeCategory(note.category))}${tags ? ` · ${escapeHtml(tags)}` : ""} / ${formatDate(note.updatedAt)}</span>
-          <span class="note-row-summary">${escapeHtml(note.summary || note.content.slice(0, 110) || "无摘要")}</span>
+        </button>
+        <span class="note-row-actions">
+          <button type="button" class="note-row-action" data-action="pin" data-id="${escapeHtml(note.id)}" title="置顶">${pinned.has(note.id) ? "取消置顶" : "置顶"}</button>
+          <button type="button" class="note-row-action" data-action="fav" data-id="${escapeHtml(note.id)}" title="收藏">${favorites.has(note.id) ? "取消收藏" : "收藏"}</button>
+          ${liveUrl ? `<a class="note-row-action" href="${escapeHtml(liveUrl)}" target="_blank" rel="noopener noreferrer">打开</a>` : ""}
         </span>
-      </button>
+      </div>
     `;
   }).join("");
 
@@ -3160,8 +3330,23 @@ function renderList() {
         return;
       }
       state.selectedId = noteId;
+      rememberOpenedNote(noteId);
       render();
       if (event.detail === 0) state.editor?.focus?.();
+    });
+  });
+  elements.list.querySelectorAll("[data-action='pin']").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      togglePinned(button.dataset.id);
+    });
+  });
+  elements.list.querySelectorAll("[data-action='fav']").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleFavorite(button.dataset.id);
     });
   });
 }
@@ -3360,6 +3545,18 @@ function renderEditor() {
   fields.slug.value = syncDraftSlug(note);
   fields.category.value = normalizeCategory(note.category);
   fields.tags.value = note.tags.join(", ");
+  if (fields.parent) {
+    const options = ['<option value="">无（根页面）</option>']
+      .concat(
+        state.data.notes
+          .filter((item) => item.id !== note.id && !wouldCreateParentCycle(state.data.notes, note.id, item.id))
+          .map((item) => (
+            `<option value="${escapeHtml(item.id)}"${item.id === note.parentId ? " selected" : ""}>${escapeHtml(item.title || "无标题")}</option>`
+          ))
+      );
+    fields.parent.innerHTML = options.join("");
+    fields.parent.value = note.parentId || "";
+  }
   const listStatus = getNoteListStatus(note);
   fields.status.value = listStatus === "draft" ? "draft" : "published";
   const statusLabel = noteStatusMeta(note).name;
@@ -3876,7 +4073,11 @@ function setBusy(value) {
     elements.duplicateNote,
     elements.deleteNote,
     elements.pullRemote,
+    elements.saveDraftRemote,
     elements.publishRemote,
+    elements.exportWorkspace,
+    elements.importWorkspace,
+    elements.noteHistory,
     elements.saveLocal,
     elements.saveConfig,
     elements.logoutAdmin,
@@ -4098,6 +4299,151 @@ async function pullRemote() {
   if (!requireOwnerAccess()) return;
   saveConfig();
   await syncRemotePosts({ initial: false });
+}
+
+async function saveDraftRemote() {
+  if (!requireOwnerAccess()) return;
+  saveConfig();
+  const note = getSelectedNote();
+  if (!note) {
+    setStatus("先选择一篇笔记", true);
+    return;
+  }
+  if (hasPendingImageUploads(note.id)) {
+    setStatus("图片仍在上传，请完成或移除后再保存草稿", true);
+    return;
+  }
+  fields.slug.value = syncDraftSlug(note);
+  if (!validateSelected()) return;
+
+  setBusy(true);
+  const draftNote = normalizeNote({
+    ...note,
+    status: "draft",
+    updatedAt: new Date().toISOString()
+  });
+  const submittedFingerprint = noteContentFingerprint(draftNote);
+  setStatus("正在保存远端草稿...");
+  let remote = null;
+  try {
+    remote = await apiFetch("/api/drafts", {
+      method: "POST",
+      body: JSON.stringify({ note: draftNote })
+    });
+  } catch (error) {
+    setStatus(`远端草稿失败：${error.message}`, true);
+    return;
+  } finally {
+    setBusy(false);
+  }
+
+  const current = state.data.notes.find((item) => item.id === draftNote.id);
+  if (!current) {
+    setStatus("草稿已提交，但本地页面已不存在，请重新同步", true);
+    return;
+  }
+  const unchanged = noteContentFingerprint(current) === submittedFingerprint;
+  current.status = "draft";
+  current.slug = remote.slug || current.slug;
+  current.remotePath = remote.path || current.remotePath;
+  current.remoteSha = remote.sha || current.remoteSha;
+  current.updatedAt = draftNote.updatedAt;
+  current.localDirty = !unchanged;
+  window.clearTimeout(state.autosaveTimer);
+  state.autosaveTimer = null;
+  state.dirty = current.localDirty;
+  state.autosaveStatus = current.localDirty ? "pending" : "saved";
+  persistWorkspace(false);
+  render();
+  if (current.localDirty) scheduleAutosave();
+  setStatus(current.localDirty ? "远端草稿已保存，本地仍有未推送修改" : "远端草稿已保存，可在其他设备同步");
+}
+
+function exportWorkspace() {
+  if (!requireOwnerAccess()) return;
+  const payload = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    library: state.library,
+    data: serializeData()
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `tomfng-notes-${new Date().toISOString().slice(0, 10)}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  setStatus("已导出本机工作区");
+}
+
+async function importWorkspaceFromFile(event) {
+  if (!requireOwnerAccess()) return;
+  const file = event.target?.files?.[0];
+  event.target.value = "";
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const notes = normalizeNotesData(payload.data || payload).notes;
+    if (!notes.length) throw new Error("文件中没有笔记");
+    if (!window.confirm(`导入将合并 ${notes.length} 篇笔记到当前工作区，是否继续？`)) return;
+    const byId = new Map(state.data.notes.map((note) => [note.id, note]));
+    notes.forEach((note) => {
+      const existing = byId.get(note.id);
+      if (!existing) {
+        state.data.notes.unshift(normalizeNote({ ...note, localDirty: true }));
+        return;
+      }
+      if (noteContentFingerprint(existing) !== noteContentFingerprint(note)) {
+        Object.assign(existing, normalizeNote({
+          ...existing,
+          ...note,
+          id: existing.id,
+          localDirty: true,
+          updatedAt: new Date().toISOString()
+        }));
+      }
+    });
+    if (payload.library) {
+      state.library = normalizeLibraryState(payload.library);
+      persistLibraryState();
+    }
+    markDirty(`已导入 ${notes.length} 篇笔记`);
+    render();
+  } catch (error) {
+    setStatus(`导入失败：${error.message}`, true);
+  }
+}
+
+async function openNoteHistory() {
+  if (!requireOwnerAccess()) return;
+  const note = getSelectedNote();
+  if (!note?.remotePath) {
+    setStatus("先同步或保存远端后再查看历史", true);
+    return;
+  }
+  if (!elements.historyDialog) return;
+  elements.historyPath.textContent = note.remotePath;
+  elements.historyList.innerHTML = `<div class="admin-history-empty">加载中…</div>`;
+  elements.historyDialog.showModal?.();
+  try {
+    const result = await apiFetch(`/api/posts/history?path=${encodeURIComponent(note.remotePath)}`);
+    const commits = Array.isArray(result.commits) ? result.commits : [];
+    if (!commits.length) {
+      elements.historyList.innerHTML = `<div class="admin-history-empty">暂无提交记录</div>`;
+      return;
+    }
+    elements.historyList.innerHTML = commits.map((commit) => `
+      <a class="admin-history-item" href="${escapeHtml(commit.url)}" target="_blank" rel="noopener noreferrer">
+        <strong>${escapeHtml(commit.shortSha || commit.sha || "")}</strong>
+        <span>${escapeHtml(commit.message || "")}</span>
+        <small>${escapeHtml(commit.author || "")} · ${escapeHtml(formatDate(commit.date))}</small>
+      </a>
+    `).join("");
+  } catch (error) {
+    elements.historyList.innerHTML = `<div class="admin-history-empty">读取失败：${escapeHtml(error.message)}</div>`;
+  }
 }
 
 async function syncRemotePosts({ initial = false } = {}) {
