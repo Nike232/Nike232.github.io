@@ -120,6 +120,46 @@ test("a remotely deleted clean post is removed locally", () => {
   assert.equal(result.data.notes.length, 0);
 });
 
+test("remote synchronization merges local draft with remote draft by admin id", () => {
+  const local = post({
+    id: "shared-1",
+    status: "draft",
+    remotePath: "",
+    remoteSha: "",
+    content: "本地草稿",
+    localDirty: true
+  });
+  const remote = post({
+    id: "shared-1",
+    status: "draft",
+    remotePath: "source/_drafts/shared-1.md",
+    remoteSha: "draft-sha",
+    content: "远端草稿",
+    localDirty: false
+  });
+  const result = mergeRemotePosts({ notes: [local] }, { notes: [remote] });
+  assert.equal(result.data.notes.length, 1);
+  assert.equal(result.data.notes[0].id, "shared-1");
+  assert.equal(result.data.notes[0].remotePath, "source/_drafts/shared-1.md");
+  assert.equal(result.data.notes[0].status, "draft");
+  assert.equal(result.data.notes[0].content, "本地草稿");
+  assert.equal(result.data.notes[0].localDirty, true);
+});
+
+test("remote synchronization keeps remote draft status for draft paths", () => {
+  const remote = post({
+    id: "d-remote",
+    status: "published",
+    remotePath: "source/_drafts/d-remote.md",
+    remoteSha: "sha-d",
+    content: "草稿正文"
+  });
+  const result = mergeRemotePosts({ notes: [] }, { notes: [remote] });
+  assert.equal(result.data.notes.length, 1);
+  assert.equal(result.data.notes[0].status, "draft");
+  assert.equal(getNoteListStatus(result.data.notes[0]), "draft");
+});
+
 test("Markdown preview renders safe local and remote images", () => {
   const html = markdownToHtml([
     "![本地截图](/images/posts/2026/07/demo.png)",
@@ -746,14 +786,26 @@ test("library helpers cover search, hierarchy, drafts, and relative time", () =>
   assert.equal(formatRelativeTime(new Date().toISOString()).includes(":"), true);
   assert.equal(extractNoteCover("hello ![x](/images/a.png) more"), "/images/a.png");
   assert.equal(extractNoteCover("", { cover: "/images/c.png" }), "/images/c.png");
+  assert.equal(extractNoteCover("", { cover: "javascript:alert(1)" }), "");
+  assert.equal(extractNoteCover("![x](data:text/html;base64,aaa)"), "");
   assert.match(
     publicNoteUrl({
       status: "published",
       remotePath: "source/_posts/a.md",
       slug: "hello",
       createdAt: "2026-07-13T02:00:00.000Z"
-    }),
+    }, "http://tomfng.space", { timeZone: "Asia/Shanghai" }),
     /\/2026\/07\/13\/hello\//
+  );
+  // UTC midnight should still resolve to Shanghai calendar date (next day).
+  assert.match(
+    publicNoteUrl({
+      status: "published",
+      remotePath: "source/_posts/a.md",
+      slug: "tz",
+      createdAt: "2026-07-12T16:30:00.000Z"
+    }, "http://tomfng.space", { timeZone: "Asia/Shanghai" }),
+    /\/2026\/07\/13\/tz\//
   );
   assert.equal(publicNoteUrl({ status: "draft", remotePath: "source/_drafts/a.md", slug: "x" }), "");
 
@@ -767,12 +819,19 @@ test("library helpers cover search, hierarchy, drafts, and relative time", () =>
 
   const notes = [
     normalizeNote({ id: "root", title: "根", content: "alpha keyword here", updatedAt: "2026-07-10T00:00:00.000Z" }),
-    normalizeNote({ id: "child", title: "子", parentId: "root", content: "beta", updatedAt: "2026-07-11T00:00:00.000Z" })
+    normalizeNote({ id: "child", title: "子", parentId: "root", content: "beta", updatedAt: "2026-07-11T00:00:00.000Z" }),
+    normalizeNote({ id: "sib", title: "甲", parentId: "root", content: "gamma", updatedAt: "2026-07-12T00:00:00.000Z" })
   ];
   const ordered = orderNotesWithPinsAndTree(notes, { pinnedIds: ["child"] }, "updated");
   assert.equal(ordered.notes[0].id, "child");
-  const hits = searchNotesWithSnippets(notes, "keyword");
-  assert.equal(hits[0].id, "root");
+  const byTitle = orderNotesWithPinsAndTree(notes, {}, "title");
+  assert.deepEqual(byTitle.notes.map((n) => n.id), ["root", "sib", "child"]);
+  const hits = searchNotesWithSnippets([
+    normalizeNote({ id: "low", title: "low", content: "keyword" }),
+    normalizeNote({ id: "high", title: "high", content: "keyword keyword keyword" })
+  ], "keyword", { limit: 1 });
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].id, "high");
   assert.match(hits[0].snippet, /keyword/i);
 });
 

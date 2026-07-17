@@ -187,3 +187,25 @@ test("draft Markdown round-trips with parent id and draft status", () => {
   assert.equal(parsed.parentId, "parent-9");
   assert.equal(parsed.remotePath, "source/_drafts/remote-draft.md");
 });
+
+test("resolveDraftTarget rejects already-published remote paths", async () => {
+  await assert.rejects(
+    __test.resolveDraftTarget({
+      id: "note-1",
+      title: "已发",
+      slug: "published",
+      remotePath: "source/_posts/published.md",
+      remoteSha: "sha"
+    }, env),
+    /不能另存为远端草稿/
+  );
+});
+
+test("publicPostUrl uses Shanghai calendar dates", () => {
+  const url = __test.publicPostUrl({
+    title: "时区",
+    slug: "tz",
+    createdAt: "2026-07-12T16:30:00.000Z"
+  }, env);
+  assert.equal(url, "http://tomfng.space/2026/07/13/tz/");
+});

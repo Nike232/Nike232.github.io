@@ -233,6 +233,7 @@ async function publish(request, env) {
     env
   );
 
+  let draftCleanupFailed = false;
   if (previousPath && previousPath !== publishTarget.path) {
     try {
       const old = await githubGetContent(previousPath, env);
@@ -240,6 +241,7 @@ async function publish(request, env) {
     } catch (error) {
       if (error.status !== 404) {
         // Published file exists; draft cleanup can be retried later.
+        draftCleanupFailed = true;
       }
     }
   }
@@ -251,7 +253,8 @@ async function publish(request, env) {
     sha: result.content?.sha || null,
     revision,
     publicUrl: publicPostUrl(note, env, publishTarget.slug),
-    commit: result.commit?.sha || null
+    commit: result.commit?.sha || null,
+    draftCleanupFailed
   }, 200, request, env);
 }
 
@@ -488,6 +491,11 @@ function normalizeDraftDirectory(path) {
 }
 
 async function resolveDraftTarget(note, env) {
+  if (note.remotePath && !isDraftPath(note.remotePath)) {
+    // Refuse creating a parallel _drafts file for an already-published path.
+    throw new HttpError(400, "已发布文章请直接发布更新，不能另存为远端草稿");
+  }
+
   if (note.remotePath && isDraftPath(note.remotePath)) {
     const path = safeContentPath(note.remotePath, env);
     try {
