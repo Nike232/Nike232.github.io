@@ -39,9 +39,7 @@ function normalizeNote(note = {}) {
   const frontMatter = note.frontMatter && typeof note.frontMatter === "object" ? note.frontMatter : {};
   const remotePath = String(note.remotePath || "");
   const draftRemote = isRemoteDraftPath(remotePath);
-  const status = note.status === "published" && !draftRemote
-    ? "published"
-    : (draftRemote || note.status !== "published" ? "draft" : "draft");
+  const status = draftRemote || note.status !== "published" ? "draft" : "published";
   const parentId = String(note.parentId || frontMatter.admin_parent || "").trim();
   return {
     id: String(note.id || makeId()),
@@ -122,27 +120,39 @@ function mergeRemotePosts(localData, remoteData) {
     });
   });
   const remoteByPath = new Map(remoteNotes.filter((note) => note.remotePath).map((note) => [note.remotePath, note]));
+  const remoteById = new Map(remoteNotes.map((note) => [note.id, note]));
   const remoteBySlug = new Map(
     remoteNotes
-      .filter((note) => !isRemoteDraftPath(note.remotePath))
+      .filter((note) => note.status === "published" && !isRemoteDraftPath(note.remotePath))
       .map((note) => [String(note.slug || "").toLowerCase(), note])
   );
-  const consumed = new Set();
+  const consumedIds = new Set();
+  const consumedPaths = new Set();
+  const markConsumed = (remote) => {
+    if (remote?.id) consumedIds.add(remote.id);
+    if (remote?.remotePath) consumedPaths.add(remote.remotePath);
+  };
+  const isConsumed = (remote) => (
+    Boolean(remote?.id && consumedIds.has(remote.id))
+    || Boolean(remote?.remotePath && consumedPaths.has(remote.remotePath))
+  );
   const merged = [];
   let preserved = 0;
 
   localNotes.forEach((local) => {
     const remote = (local.remotePath && remoteByPath.get(local.remotePath))
+      || remoteById.get(local.id)
       || (local.status === "published" && !isRemoteDraftPath(local.remotePath)
         && remoteBySlug.get(String(local.slug || "").toLowerCase()));
-    if (remote) {
-      consumed.add(remote.remotePath || remote.id);
+    if (remote && !isConsumed(remote)) {
+      markConsumed(remote);
       const same = noteContentFingerprint(local) === noteContentFingerprint(remote);
       const keepLocal = !same && (local.localDirty || !local.remoteSha);
       if (keepLocal) {
         preserved += 1;
         merged.push(normalizeNote({
           ...local,
+          id: remote.id || local.id,
           status: remote.status,
           parentId: local.parentId || remote.parentId,
           remotePath: remote.remotePath,
@@ -172,7 +182,7 @@ function mergeRemotePosts(localData, remoteData) {
   });
 
   remoteNotes.forEach((remote) => {
-    if (!consumed.has(remote.remotePath || remote.id)) merged.push(remote);
+    if (!isConsumed(remote)) merged.push(remote);
   });
 
   return {
@@ -1284,28 +1294,54 @@ function formatRelativeTime(value, now = new Date()) {
   return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
+function isSafeCoverUrl(url = "") {
+  const value = String(url || "").trim();
+  if (!value || /[\r\n\f]/.test(value)) return false;
+  if (/^(javascript|data|vbscript):/i.test(value)) return false;
+  if (value.startsWith("/") && !value.startsWith("//")) return true;
+  try {
+    const parsed = new URL(value, "https://tomfng.space");
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 function extractNoteCover(content = "", frontMatter = {}) {
   const fm = frontMatter && typeof frontMatter === "object" ? frontMatter : {};
   const fromFm = String(fm.cover || fm.image || fm.thumbnail || "").trim();
-  if (fromFm && !/^javascript:/i.test(fromFm)) return fromFm;
+  if (fromFm && isSafeCoverUrl(fromFm)) return fromFm;
   const match = /!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/.exec(String(content || ""));
   if (!match) return "";
   const url = String(match[1] || "").trim();
-  if (!url || /^javascript:/i.test(url)) return "";
+  if (!isSafeCoverUrl(url)) return "";
   return url;
 }
 
-function publicNoteUrl(note = {}, siteBase = "http://tomfng.space") {
+function calendarPartsInTimeZone(value, timeZone = "Asia/Shanghai") {
+  const date = new Date(value || Date.now());
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timeZone || "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date).reduce((result, part) => {
+    result[part.type] = part.value;
+    return result;
+  }, {});
+  if (!parts.year || !parts.month || !parts.day) return null;
+  return parts;
+}
+
+function publicNoteUrl(note = {}, siteBase = "http://tomfng.space", options = {}) {
   if (isRemoteDraftPath(note.remotePath)) return "";
   if (!note.remotePath && note.status !== "published") return "";
   const base = String(siteBase || "http://tomfng.space").replace(/\/+$/g, "") || "http://tomfng.space";
-  const created = new Date(note.createdAt || Date.now());
-  if (Number.isNaN(created.getTime())) return "";
-  const year = String(created.getFullYear());
-  const month = String(created.getMonth() + 1).padStart(2, "0");
-  const day = String(created.getDate()).padStart(2, "0");
+  const parts = calendarPartsInTimeZone(note.createdAt || Date.now(), options.timeZone || "Asia/Shanghai");
+  if (!parts) return "";
   const slug = encodeURIComponent(String(note.slug || makeSlug(note.title || "note")).trim());
-  return `${base}/${year}/${month}/${day}/${slug}/`;
+  return `${base}/${parts.year}/${parts.month}/${parts.day}/${slug}/`;
 }
 
 function searchNotesWithSnippets(notes, query, options = {}) {
@@ -1344,9 +1380,8 @@ function searchNotesWithSnippets(notes, query, options = {}) {
       snippet: snippet || summary || content.slice(0, 80),
       score: terms.reduce((sum, term) => sum + (lower.split(term).length - 1), 0)
     });
-    if (results.length >= limit) break;
   }
-  return results.sort((a, b) => b.score - a.score);
+  return results.sort((a, b) => b.score - a.score || String(a.title).localeCompare(String(b.title), "zh-CN")).slice(0, limit);
 }
 
 function wouldCreateParentCycle(notes, noteId, parentId) {
@@ -1365,7 +1400,7 @@ function wouldCreateParentCycle(notes, noteId, parentId) {
   return false;
 }
 
-function buildNoteTree(notes) {
+function buildNoteTree(notes, sortBy = "updated") {
   const items = Array.from(notes || []).map((note) => normalizeNote(note));
   const byId = new Map(items.map((note) => [note.id, { ...note, children: [] }]));
   const roots = [];
@@ -1375,8 +1410,10 @@ function buildNoteTree(notes) {
     else roots.push(node);
   });
   const sortNodes = (nodes) => {
-    nodes.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    nodes.forEach((node) => sortNodes(node.children));
+    const ordered = sortNotes(nodes, sortBy);
+    nodes.length = 0;
+    nodes.push(...ordered);
+    nodes.forEach((node) => sortNodes(node.children || []));
   };
   sortNodes(roots);
   return roots;
@@ -1395,7 +1432,7 @@ function orderNotesWithPinsAndTree(notes, library = {}, sortBy = "updated") {
   const pinned = new Set(normalizeLibraryState(library).pinnedIds);
   const pinnedNotes = sorted.filter((note) => pinned.has(note.id));
   const rest = sorted.filter((note) => !pinned.has(note.id));
-  const tree = buildNoteTree(rest);
+  const tree = buildNoteTree(rest, sortBy);
   const flat = flattenNoteTree(tree);
   // Keep pinned at top (flat), then tree-ordered rest.
   const restOrdered = flat.map((item) => item.note);
@@ -1641,10 +1678,12 @@ function markdownBlockTemplate(command, selected = "") {
 
 window.TomfngNoteTools = {
   buildNoteTree,
+  calendarPartsInTimeZone,
   createHtmlToMarkdown,
   escapeHtml,
   extractMarkdownHeadings,
   extractNoteCover,
+  isSafeCoverUrl,
   filterNotesByListStatus,
   filterNotesByQuery,
   filterNotesByTag,

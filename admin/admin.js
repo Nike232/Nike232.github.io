@@ -2854,14 +2854,17 @@ async function deleteSelectedNote() {
   if (!requireOwnerAccess()) return;
   const note = getSelectedNote();
   if (!note) return;
-  const published = Boolean(note.remotePath);
-  const message = published
-    ? `确定删除《${note.title || "无标题"}》吗？文章会从博客中移除，本地未发布修改也会删除。`
-    : `确定删除草稿《${note.title || "无标题"}》吗？此操作无法撤销。`;
+  const hasRemote = Boolean(note.remotePath);
+  const remoteDraft = isRemoteDraftPath(note.remotePath);
+  const message = !hasRemote
+    ? `确定删除草稿《${note.title || "无标题"}》吗？此操作无法撤销。`
+    : remoteDraft
+      ? `确定删除远端草稿《${note.title || "无标题"}》吗？会从 Git 仓库移除该草稿文件。`
+      : `确定删除《${note.title || "无标题"}》吗？文章会从博客中移除，本地未发布修改也会删除。`;
   if (!window.confirm(message)) return;
   state.publishPollId += 1;
 
-  if (published) {
+  if (hasRemote) {
     setBusy(true);
     setStatus("正在提交删除...");
     try {
@@ -2879,7 +2882,13 @@ async function deleteSelectedNote() {
 
   removeNoteLocally(note.id);
   state.selectedId = getVisibleNotes()[0]?.id || state.data.notes[0]?.id || null;
-  markDirty(published ? "已提交删除，网站正在更新" : "已删除本地草稿");
+  markDirty(
+    !hasRemote
+      ? "已删除本地草稿"
+      : remoteDraft
+        ? "已删除远端草稿"
+        : "已提交删除，网站正在更新"
+  );
   render();
 }
 
@@ -2922,8 +2931,14 @@ function updateSelectedFromFields() {
   note.tags = normalizeTags(fields.tags.value);
   const previousParentId = String(note.parentId || "");
   const nextParent = String(fields.parent?.value || "").trim();
-  note.parentId = wouldCreateParentCycle(state.data.notes, note.id, nextParent) ? previousParentId : nextParent;
-  if (fields.parent) fields.parent.value = note.parentId || "";
+  if (nextParent && wouldCreateParentCycle(state.data.notes, note.id, nextParent)) {
+    note.parentId = previousParentId;
+    if (fields.parent) fields.parent.value = previousParentId || "";
+    setStatus("不能选择该父页面：会形成循环引用", true);
+  } else {
+    note.parentId = nextParent;
+    if (fields.parent) fields.parent.value = note.parentId || "";
+  }
   note.slug = note.remotePath
     ? ensureNoteSlug({ ...note, slug: note.slug || fields.slug.value.trim() })
     : autoSlugForTitle(note.title);
@@ -3294,8 +3309,12 @@ function renderList() {
     const checkbox = state.batchMode
       ? `<span class="note-row-check" aria-hidden="true">${checked ? "☑" : "☐"}</span>`
       : "";
-    const coverHtml = cover
-      ? `<span class="note-row-cover" style="background-image:url('${escapeHtml(cover)}')"></span>`
+    // Covers are already scheme-filtered; only escape CSS single-quoted url() delimiters.
+    const coverCssUrl = cover
+      ? String(cover).replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/[\r\n\f]/g, "")
+      : "";
+    const coverHtml = coverCssUrl
+      ? `<span class="note-row-cover" style="background-image:url('${coverCssUrl}')"></span>`
       : `<span class="note-row-cover is-empty"></span>`;
     const tags = normalizeTags(note.tags).slice(0, 3).join(" · ");
     return `
@@ -3386,10 +3405,14 @@ async function batchDeleteNotes() {
   const ids = [...state.selectedNoteIds];
   const notes = state.data.notes.filter((note) => ids.includes(note.id));
   if (!notes.length) return;
-  const publishedCount = notes.filter((note) => note.remotePath).length;
-  const message = publishedCount
-    ? `确定删除选中的 ${notes.length} 篇页面吗？其中 ${publishedCount} 篇已发布，会从博客移除。`
-    : `确定删除选中的 ${notes.length} 篇草稿吗？此操作无法撤销。`;
+  const remoteCount = notes.filter((note) => note.remotePath).length;
+  const publishedCount = notes.filter((note) => note.remotePath && !isRemoteDraftPath(note.remotePath)).length;
+  const remoteDraftCount = remoteCount - publishedCount;
+  const message = !remoteCount
+    ? `确定删除选中的 ${notes.length} 篇本地草稿吗？此操作无法撤销。`
+    : publishedCount
+      ? `确定删除选中的 ${notes.length} 篇页面吗？其中 ${publishedCount} 篇已发布会从博客移除${remoteDraftCount ? `，${remoteDraftCount} 篇远端草稿会从仓库移除` : ""}。`
+      : `确定删除选中的 ${notes.length} 篇页面吗？其中 ${remoteDraftCount} 篇远端草稿会从仓库移除。`;
   if (!window.confirm(message)) return;
 
   state.publishPollId += 1;
@@ -3415,7 +3438,7 @@ async function batchDeleteNotes() {
   state.selectedNoteIds = new Set();
   ensureSelectedVisible();
   if (failed) markDirty(`已删除部分页面，${failed} 篇远端删除失败`);
-  else markDirty(publishedCount ? "批量删除已提交，网站正在更新" : "已批量删除草稿");
+  else markDirty(publishedCount ? "批量删除已提交，网站正在更新" : remoteCount ? "已删除远端草稿" : "已批量删除草稿");
   if (!state.selectedNoteIds.size) setBatchMode(false);
   else render();
 }
@@ -3981,6 +4004,14 @@ function renderDirtyState() {
   };
   elements.dirty.textContent = labels[state.autosaveStatus] || (state.dirty ? "等待本机保存" : "已保存到本机");
   elements.dirty.className = `state-pill state-${state.autosaveStatus || (state.dirty ? "pending" : "saved")}`;
+  const note = getSelectedNote();
+  if (elements.saveDraftRemote) {
+    const publishedRemote = Boolean(note?.remotePath && !isRemoteDraftPath(note.remotePath));
+    elements.saveDraftRemote.disabled = state.busy || !note || publishedRemote;
+    elements.saveDraftRemote.title = publishedRemote
+      ? "已发布文章请用「发布」更新，不能另存远端草稿"
+      : "保存到 Git 仓库的 source/_drafts";
+  }
 }
 
 function validateSelected() {
@@ -4095,6 +4126,10 @@ function setBusy(value) {
   elements.deleteNote.disabled = value || !note;
   elements.toggleFocus.disabled = value || !note;
   if (elements.toggleTypewriter) elements.toggleTypewriter.disabled = value || !note;
+  if (elements.saveDraftRemote) {
+    const publishedRemote = Boolean(note?.remotePath && !isRemoteDraftPath(note.remotePath));
+    elements.saveDraftRemote.disabled = value || !note || publishedRemote;
+  }
   elements.toggleSource.disabled = value || !note;
   elements.editorSearch.disabled = value || !note;
   elements.blockToggle.disabled = value || !note;
@@ -4307,6 +4342,10 @@ async function saveDraftRemote() {
   const note = getSelectedNote();
   if (!note) {
     setStatus("先选择一篇笔记", true);
+    return;
+  }
+  if (note.remotePath && !isRemoteDraftPath(note.remotePath)) {
+    setStatus("已发布文章请用「发布」更新线上版本，不能另存为远端草稿", true);
     return;
   }
   if (hasPendingImageUploads(note.id)) {
@@ -4536,9 +4575,12 @@ async function publishRemote() {
   render();
 
   if (current.localDirty) scheduleAutosave();
+  const cleanupHint = remote.draftCleanupFailed
+    ? "（旧远端草稿清理失败，请稍后同步确认）"
+    : "";
   if (remote.publicUrl) {
     const pollId = ++state.publishPollId;
-    setStatus("已提交发布，正在生成网站...", false, remote.publicUrl);
+    setStatus(`已提交发布，正在生成网站...${cleanupHint}`, false, remote.publicUrl);
     const live = await waitForPublishedPage(
       remote.publicUrl,
       publishedNote.title,
@@ -4547,12 +4589,12 @@ async function publishRemote() {
     );
     if (pollId !== state.publishPollId) return;
     setStatus(
-      live.ready ? "已上线" : "已提交发布，网站还在生成，稍后刷新就能看到",
-      false,
+      live.ready ? `已上线${cleanupHint}` : `已提交发布，网站还在生成，稍后刷新就能看到${cleanupHint}`,
+      Boolean(remote.draftCleanupFailed),
       remote.publicUrl
     );
   } else {
-    setStatus(`已发布文章：${remote.path || publishedNote.title}`);
+    setStatus(`已发布文章：${remote.path || publishedNote.title}${cleanupHint}`, Boolean(remote.draftCleanupFailed));
   }
 }
 
