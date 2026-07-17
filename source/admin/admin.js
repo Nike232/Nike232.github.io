@@ -67,7 +67,9 @@ const EDITOR_MODE_KEY = "tomfng-notes-editor-mode";
 const EDITOR_VIEW_KEY = "tomfng-notes-editor-view";
 const TYPEWRITER_KEY = "tomfng-notes-typewriter";
 const LIBRARY_KEY = "tomfng-notes-library";
+const MOBILE_FILTERS_KEY = "tomfng-notes-mobile-filters";
 const SITE_BASE = "http://tomfng.space";
+const MOBILE_LAYOUT_MQ = "(max-width: 900px)";
 const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 const IMAGE_UPLOAD_TOKEN = "tomfng-image-upload";
 const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
@@ -162,6 +164,9 @@ const state = {
   imageResizeFrame: null,
   imageResizeSession: null,
   focusWriting: false,
+  mobilePane: "list",
+  mobileLayout: false,
+  mobileFiltersOpen: localStorage.getItem(MOBILE_FILTERS_KEY) === "1",
   blockMenuOpen: false,
   slashMenuOpen: false,
   slashContext: null,
@@ -216,6 +221,16 @@ const elements = {
   list: root.querySelector("#admin-list"),
   outline: root.querySelector("#admin-outline"),
   form: root.querySelector("#editor-form"),
+  adminLayout: root.querySelector(".admin-layout"),
+  mobileBack: root.querySelector("#admin-mobile-back"),
+  mobileBar: root.querySelector("#admin-mobile-bar"),
+  mobileBarList: root.querySelector("#mobile-bar-list"),
+  mobileBarNew: root.querySelector("#mobile-bar-new"),
+  mobileBarSync: root.querySelector("#mobile-bar-sync"),
+  mobileBarDraft: root.querySelector("#mobile-bar-draft"),
+  mobileBarPublish: root.querySelector("#mobile-bar-publish"),
+  filterToggle: root.querySelector("#admin-filter-toggle"),
+  metaDrawer: root.querySelector("#admin-meta-drawer"),
   status: root.querySelector("#status-text"),
   dirty: root.querySelector("#dirty-state"),
   previewTitle: root.querySelector("#preview-title"),
@@ -311,6 +326,39 @@ function bindWorkspaceEvents() {
   elements.pullRemote.addEventListener("click", pullRemote);
   elements.saveDraftRemote?.addEventListener("click", saveDraftRemote);
   elements.publishRemote.addEventListener("click", publishRemote);
+  elements.mobileBack?.addEventListener("click", () => setMobilePane("list"));
+  elements.mobileBarList?.addEventListener("click", () => setMobilePane("list"));
+  elements.mobileBarNew?.addEventListener("click", createNote);
+  elements.mobileBarSync?.addEventListener("click", pullRemote);
+  elements.mobileBarDraft?.addEventListener("click", saveDraftRemote);
+  elements.mobileBarPublish?.addEventListener("click", publishRemote);
+  elements.filterToggle?.addEventListener("click", () => {
+    state.mobileFiltersOpen = !state.mobileFiltersOpen;
+    try {
+      localStorage.setItem(MOBILE_FILTERS_KEY, state.mobileFiltersOpen ? "1" : "0");
+    } catch {
+      // ignore storage failures
+    }
+    applyMobileChrome();
+  });
+  if (window.matchMedia) {
+    const media = window.matchMedia(MOBILE_LAYOUT_MQ);
+    const onLayoutChange = () => {
+      const next = media.matches;
+      if (next === state.mobileLayout) {
+        applyMobileChrome();
+        return;
+      }
+      state.mobileLayout = next;
+      if (!next) state.mobilePane = "list";
+      else if (state.selectedId) state.mobilePane = "editor";
+      applyMobileChrome();
+      window.requestAnimationFrame(() => state.editor?.refresh?.());
+    };
+    state.mobileLayout = media.matches;
+    if (typeof media.addEventListener === "function") media.addEventListener("change", onLayoutChange);
+    else if (typeof media.addListener === "function") media.addListener(onLayoutChange);
+  }
   elements.exportWorkspace?.addEventListener("click", exportWorkspace);
   elements.importWorkspace?.addEventListener("click", () => elements.importWorkspaceFile?.click());
   elements.importWorkspaceFile?.addEventListener("change", importWorkspaceFromFile);
@@ -345,6 +393,7 @@ function bindWorkspaceEvents() {
   elements.noteSearch.addEventListener("input", () => {
     state.noteQuery = elements.noteSearch.value;
     pruneBatchSelection();
+    renderSearchResults();
     renderList();
     renderSidebarMode();
   });
@@ -426,6 +475,10 @@ function bindWorkspaceEvents() {
       setBatchMode(false);
       return;
     }
+    if (state.mobileLayout && state.mobilePane === "editor") {
+      setMobilePane("list");
+      return;
+    }
     if (state.focusWriting) toggleFocusWriting(false);
   });
   document.addEventListener("pointerdown", (event) => {
@@ -436,6 +489,10 @@ function bindWorkspaceEvents() {
     }
   });
   window.addEventListener("resize", autoSizeTitleField);
+  window.addEventListener("resize", () => {
+    if (window.matchMedia) state.mobileLayout = window.matchMedia(MOBILE_LAYOUT_MQ).matches;
+    applyMobileChrome();
+  });
   window.addEventListener("resize", positionLinkPopover);
   window.addEventListener("resize", positionBlockMenu);
   window.addEventListener("resize", positionSlashMenu);
@@ -2821,6 +2878,7 @@ function createNote() {
   });
   state.data.notes.unshift(note);
   state.selectedId = note.id;
+  if (state.mobileLayout) state.mobilePane = "editor";
   markDirty("新建页面");
   render();
   focusNewNoteTitle();
@@ -2845,9 +2903,83 @@ function duplicateSelectedNote() {
   });
   state.data.notes.unshift(copy);
   state.selectedId = copy.id;
+  if (state.mobileLayout) state.mobilePane = "editor";
   markDirty("已复制到本地");
   render();
   focusNewNoteTitle();
+}
+
+function isMobileLayout() {
+  if (typeof state.mobileLayout === "boolean" && window.matchMedia) {
+    return window.matchMedia(MOBILE_LAYOUT_MQ).matches;
+  }
+  return Boolean(state.mobileLayout);
+}
+
+function setMobilePane(pane) {
+  const next = pane === "editor" ? "editor" : "list";
+  if (next === "editor" && !state.selectedId) {
+    state.mobilePane = "list";
+  } else {
+    state.mobilePane = next;
+  }
+  applyMobileChrome();
+  if (state.mobilePane === "editor") {
+    window.requestAnimationFrame(() => {
+      state.editor?.refresh?.();
+      window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+    });
+  } else {
+    window.requestAnimationFrame(() => {
+      elements.list?.scrollIntoView?.({ block: "nearest" });
+    });
+  }
+}
+
+function applyMobileChrome() {
+  state.mobileLayout = isMobileLayout();
+  const layout = elements.adminLayout;
+  const pane = state.mobileLayout
+    ? (state.mobilePane === "editor" && state.selectedId ? "editor" : "list")
+    : "desktop";
+  if (state.mobileLayout) state.mobilePane = pane === "editor" ? "editor" : "list";
+  if (layout) layout.dataset.mobilePane = state.mobileLayout ? state.mobilePane : "desktop";
+  root.classList.toggle("is-mobile-layout", state.mobileLayout);
+  root.classList.toggle("is-mobile-list", state.mobileLayout && state.mobilePane === "list");
+  root.classList.toggle("is-mobile-editor", state.mobileLayout && state.mobilePane === "editor");
+  document.documentElement.classList.toggle("notes-admin-mobile", state.mobileLayout);
+  document.body.classList.toggle("notes-admin-mobile", state.mobileLayout);
+  if (elements.mobileBar) {
+    elements.mobileBar.hidden = !state.mobileLayout || !state.workspaceStarted;
+  }
+  if (elements.mobileBack) {
+    elements.mobileBack.hidden = !(state.mobileLayout && state.mobilePane === "editor");
+  }
+  if (elements.filterStack) {
+    const open = !state.mobileLayout || state.mobileFiltersOpen;
+    elements.filterStack.dataset.collapsed = open ? "false" : "true";
+    elements.filterStack.classList.toggle("is-open", open);
+  }
+  if (elements.filterToggle) {
+    elements.filterToggle.setAttribute("aria-expanded", state.mobileFiltersOpen ? "true" : "false");
+    elements.filterToggle.classList.toggle("is-active", state.mobileFiltersOpen);
+  }
+  if (elements.metaDrawer && !state.mobileLayout) {
+    elements.metaDrawer.open = true;
+  }
+  const note = getSelectedNote();
+  const publishedRemote = Boolean(note?.remotePath && !isRemoteDraftPath(note.remotePath));
+  if (elements.mobileBarDraft) {
+    elements.mobileBarDraft.disabled = state.busy || !note || publishedRemote;
+  }
+  if (elements.mobileBarPublish) {
+    elements.mobileBarPublish.disabled = state.busy || !note;
+  }
+  if (elements.mobileBarSync) elements.mobileBarSync.disabled = state.busy;
+  if (elements.mobileBarNew) elements.mobileBarNew.disabled = state.busy;
+  if (elements.mobileBarList) {
+    elements.mobileBarList.classList.toggle("is-active", state.mobileLayout && state.mobilePane === "list");
+  }
 }
 
 async function deleteSelectedNote() {
@@ -2882,6 +3014,7 @@ async function deleteSelectedNote() {
 
   removeNoteLocally(note.id);
   state.selectedId = getVisibleNotes()[0]?.id || state.data.notes[0]?.id || null;
+  if (state.mobileLayout) state.mobilePane = "list";
   markDirty(
     !hasRemote
       ? "已删除本地草稿"
@@ -3000,6 +3133,7 @@ function scheduleSecondaryRender(noteId, work) {
 
 function render() {
   if (elements.sortSelect) elements.sortSelect.value = state.sortBy || "updated";
+  applyMobileChrome();
   renderStatusFilters();
   renderCategories();
   renderTags();
@@ -3012,6 +3146,7 @@ function render() {
   renderSidebarMode();
   renderDirtyState();
   updateEditorStats();
+  applyMobileChrome();
 }
 
 function loadLibraryState() {
@@ -3080,6 +3215,7 @@ function renderRecentStrip() {
     button.addEventListener("click", () => {
       state.selectedId = button.dataset.id;
       rememberOpenedNote(state.selectedId);
+      if (state.mobileLayout) state.mobilePane = "editor";
       render();
     });
   });
@@ -3115,6 +3251,7 @@ function renderSearchResults() {
     button.addEventListener("click", () => {
       state.selectedId = button.dataset.id;
       rememberOpenedNote(state.selectedId);
+      if (state.mobileLayout) state.mobilePane = "editor";
       render();
       state.editor?.focus?.();
     });
@@ -3350,8 +3487,9 @@ function renderList() {
       }
       state.selectedId = noteId;
       rememberOpenedNote(noteId);
+      if (state.mobileLayout) state.mobilePane = "editor";
       render();
-      if (event.detail === 0) state.editor?.focus?.();
+      if (event.detail === 0 || state.mobileLayout) state.editor?.focus?.();
     });
   });
   elements.list.querySelectorAll("[data-action='pin']").forEach((button) => {
@@ -4117,7 +4255,13 @@ function setBusy(value) {
     elements.editorSearch,
     elements.blockToggle,
     elements.toggleTypewriter,
-    elements.toggleFocus
+    elements.toggleFocus,
+    elements.mobileBarNew,
+    elements.mobileBarSync,
+    elements.mobileBarDraft,
+    elements.mobileBarPublish,
+    elements.mobileBack,
+    elements.filterToggle
   ].filter(Boolean).forEach((button) => {
     button.disabled = value;
   });
@@ -4130,6 +4274,7 @@ function setBusy(value) {
     const publishedRemote = Boolean(note?.remotePath && !isRemoteDraftPath(note.remotePath));
     elements.saveDraftRemote.disabled = value || !note || publishedRemote;
   }
+  applyMobileChrome();
   elements.toggleSource.disabled = value || !note;
   elements.editorSearch.disabled = value || !note;
   elements.blockToggle.disabled = value || !note;

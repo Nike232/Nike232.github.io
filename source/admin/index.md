@@ -22,11 +22,12 @@ comments: false
 <p class="admin-auth-message" id="auth-message">未登录时不会加载笔记编辑器。</p>
 </div>
 </section>
-<section class="admin-layout" data-admin-workspace hidden>
+<section class="admin-layout" data-admin-workspace data-mobile-pane="list" hidden>
 <aside class="admin-sidebar" aria-label="笔记列表">
 <div class="rail-head">
 <h2 id="sidebar-view-title">页面</h2>
 <div class="sidebar-head-actions">
+<button type="button" class="ghost-button admin-filter-toggle" id="admin-filter-toggle" aria-expanded="false" aria-controls="admin-filter-stack" title="筛选" aria-label="筛选"><i class="fa-solid fa-sliders"></i><span>筛选</span></button>
 <div class="sidebar-view-tabs" role="tablist" aria-label="侧栏视图">
 <button type="button" id="sidebar-pages" role="tab" aria-selected="true" aria-controls="admin-list" title="页面" aria-label="页面"><i class="fa-regular fa-file-lines"></i></button>
 <button type="button" id="sidebar-outline" role="tab" aria-selected="false" aria-controls="admin-outline" title="大纲" aria-label="大纲"><i class="fa-solid fa-list-ul"></i></button>
@@ -46,7 +47,7 @@ comments: false
 </label>
 <div class="admin-recent-strip" id="admin-recent-strip" aria-label="最近打开" hidden></div>
 <div class="admin-search-results" id="admin-search-results" hidden></div>
-<div class="admin-filter-stack" id="admin-filter-stack">
+<div class="admin-filter-stack" id="admin-filter-stack" data-collapsed="true">
 <div class="category-strip" id="admin-status-strip" aria-label="状态"></div>
 <label class="admin-sort-field" id="admin-sort-wrap">
 <span>排序</span>
@@ -70,7 +71,10 @@ comments: false
 </aside>
 <section class="editor-panel" aria-label="编辑器">
 <div class="status-line">
+<div class="status-line-main">
+<button class="ghost-button admin-mobile-back" id="admin-mobile-back" type="button" title="返回列表" aria-label="返回列表"><i class="fa-solid fa-chevron-left"></i><span>列表</span></button>
 <span class="status-text" id="status-text">本地工作区</span>
+</div>
 <div class="sync-actions">
 <button class="ghost-button" id="pull-remote" type="button"><i class="fa-solid fa-rotate"></i><span>同步</span></button>
 <button class="ghost-button" id="save-draft-remote" type="button"><i class="fa-solid fa-cloud"></i><span>远端草稿</span></button>
@@ -94,6 +98,9 @@ comments: false
 <input id="field-slug" name="slug" autocomplete="off">
 <small class="field-error" id="error-slug"></small>
 </label>
+<details class="admin-meta-drawer" id="admin-meta-drawer">
+<summary>页面属性<span class="admin-meta-hint">分类 · 标签 · 摘要</span></summary>
+<div class="admin-meta-body">
 <label class="field">
 <span>分类</span>
 <input id="field-category" name="category" autocomplete="off" list="category-options" placeholder="未分类">
@@ -125,6 +132,8 @@ comments: false
 <textarea id="field-summary" name="summary" rows="3" placeholder="给这篇笔记留一句简短说明"></textarea>
 <small class="field-error"></small>
 </label>
+</div>
+</details>
 <div class="field field-wide editor-field">
 <div class="editor-head">
 <div class="editor-head-title">
@@ -205,6 +214,13 @@ comments: false
 </div>
 </form>
 </section>
+<nav class="admin-mobile-bar" id="admin-mobile-bar" aria-label="移动端操作" hidden>
+<button type="button" class="admin-mobile-bar-btn" id="mobile-bar-list" data-mobile-action="list" title="列表"><i class="fa-solid fa-bars"></i><span>列表</span></button>
+<button type="button" class="admin-mobile-bar-btn" id="mobile-bar-new" data-mobile-action="new" title="新建"><i class="fa-solid fa-plus"></i><span>新建</span></button>
+<button type="button" class="admin-mobile-bar-btn" id="mobile-bar-sync" data-mobile-action="sync" title="同步"><i class="fa-solid fa-rotate"></i><span>同步</span></button>
+<button type="button" class="admin-mobile-bar-btn" id="mobile-bar-draft" data-mobile-action="draft" title="远端草稿"><i class="fa-solid fa-cloud"></i><span>草稿</span></button>
+<button type="button" class="admin-mobile-bar-btn is-primary" id="mobile-bar-publish" data-mobile-action="publish" title="发布"><i class="fa-solid fa-cloud-arrow-up"></i><span>发布</span></button>
+</nav>
 <details class="preview-panel" aria-label="预览" data-admin-workspace hidden>
 <summary class="preview-head">
 <h2>预览</h2>
